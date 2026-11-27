@@ -66,10 +66,12 @@ export function AppShell({ children }: AppShellProps) {
         return;
       }
 
-      const num = parseInt(e.key, 10);
-      if (num >= 1 && num <= WORKBENCH_ROUTES.length && !e.altKey && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setActiveRoute(WORKBENCH_ROUTES[num - 1].id as WorkbenchRouteId);
+      if (!e.altKey && !e.ctrlKey && !e.metaKey) {
+        const matched = WORKBENCH_ROUTES.find((r) => r.shortcut === e.key);
+        if (matched) {
+          e.preventDefault();
+          setActiveRoute(matched.id as WorkbenchRouteId);
+        }
       }
     };
 

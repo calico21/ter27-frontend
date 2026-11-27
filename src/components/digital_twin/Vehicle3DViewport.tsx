@@ -758,7 +758,7 @@ export function Vehicle3DViewport() {
 
   if (!vehicleOverview) {
     return (
-      <div className="machined-panel w-full h-full flex items-center justify-center text-[12px] text-[#94A3B8]">
+      <div className="machined-panel w-full h-full flex items-center justify-center text-[11.5px] font-mono text-[#94A3B8]">
         Loading TeR27 4WD vehicle envelope parameters...
       </div>
     );
@@ -768,41 +768,47 @@ export function Vehicle3DViewport() {
     <div className="w-full h-full min-h-0 overflow-hidden">
       <SplitPane
         direction="horizontal"
-        initialRatio={0.71}
-        minRatio={0.5}
+        initialRatio={0.72}
+        minRatio={0.56}
         maxRatio={0.82}
         first={
           <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden relative">
-            {/* Minimal Studio Header Bar */}
-            <div className="panel-header-bar gap-3 z-10">
-              <div className="flex items-center gap-2.5">
-                <span className="panel-title-label">3D Spatial Digital Twin</span>
-                <span className="status-pill status-pill-muted font-mono text-[10px]">
-                  WB {vehicleOverview.params.wheelbase_m.toFixed(2)} m · Track{" "}
-                  {vehicleOverview.params.track_front_m.toFixed(2)} m · CG{" "}
-                  {(vehicleOverview.params.cg_height_m * 1000).toFixed(0)} mm
+            {/* Fixed 28px Instrument Header */}
+            <div className="inst-header z-10">
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <span className="panel-title-label shrink-0">3D Spatial Digital Twin</span>
+                <span className="font-mono text-[9.5px] text-[#7E8899] truncate hidden md:inline">
+                  WB {vehicleOverview.params.wheelbase_m.toFixed(2)}m · Trk{" "}
+                  {vehicleOverview.params.track_front_m.toFixed(2)}m · CG{" "}
+                  {(vehicleOverview.params.cg_height_m * 1000).toFixed(0)}mm
                 </span>
               </div>
 
-              {/* Compact live telemetry readout pill */}
-              <div className="flex items-center gap-3 font-mono text-[11px] tabular text-[#CBD5E1]">
-                <span>
-                  <span className="text-[#64748B]">Steer </span>
-                  {frame.state.steer_deg.toFixed(1)}°
+              <div className="flex items-center gap-2 font-mono text-[10px] tabular shrink-0">
+                <span className="h-[20px] px-1.5 rounded-[2px] bg-[#151820] border border-[#222633] flex items-center gap-1">
+                  <span className="text-[#7E8899]">δ</span>
+                  <span className="inline-block min-w-[5ch] text-right text-[#ECEFF4]">
+                    {frame.state.steer_deg.toFixed(1)}°
+                  </span>
                 </span>
-                <span>
-                  <span className="text-[#64748B]">Speed </span>
-                  {(frame.state.vx * 3.6).toFixed(1)} km/h
+                <span className="h-[20px] px-1.5 rounded-[2px] bg-[#151820] border border-[#222633] flex items-center gap-1">
+                  <span className="text-[#7E8899]">vx</span>
+                  <span className="inline-block min-w-[6ch] text-right text-[#ECEFF4]">
+                    {(frame.state.vx * 3.6).toFixed(1)}
+                  </span>
+                  <span className="text-[#64748B]">km/h</span>
                 </span>
-                <span className="text-[#DFBE78]">
-                  <span className="text-[#64748B]">ay </span>
-                  {frame.state.ay_g.toFixed(2)} g
+                <span className="h-[20px] px-1.5 rounded-[2px] bg-[#151820] border border-[#222633] flex items-center gap-1">
+                  <span className="text-[#7E8899]">ay</span>
+                  <span className="inline-block min-w-[5.5ch] text-right text-[#DFBE78]">
+                    {frame.state.ay_g.toFixed(2)}g
+                  </span>
                 </span>
               </div>
             </div>
 
             {/* Unobstructed R3F WebGL Canvas Stage */}
-            <div className="flex-1 min-h-0 w-full relative">
+            <div className="flex-1 min-h-0 w-full relative bg-[#08090C]">
               <Canvas
                 shadows={!isSoftwareGl}
                 dpr={isSoftwareGl ? 1 : [1, 2]}
@@ -823,9 +829,8 @@ export function Vehicle3DViewport() {
                 />
               </Canvas>
 
-              {/* Floating Bottom Control Dock (solid dark surface, zero backdrop-blur over WebGL) */}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[96%] flex items-center gap-2.5 px-2.5 py-1.5 rounded-[8px] bg-[#11141B] border border-white/[0.1] shadow-[0_12px_30px_rgba(0,0,0,0.6)] flex-wrap justify-center">
-                {/* Camera Presets */}
+              {/* Floating Top-Left Camera Pills (solid dark surface, zero backdrop-blur) */}
+              <div className="absolute top-2.5 left-2.5 z-10 px-1.5 py-1 rounded-[4px] bg-[#0F1116] border border-[#222633] shadow-[0_8px_20px_rgba(0,0,0,0.55)]">
                 <div className="seg-track" role="group" aria-label="Camera Presets">
                   {(Object.keys(CAMERA_PRESETS) as CameraPresetId[]).map((id) => (
                     <button
@@ -839,39 +844,37 @@ export function Vehicle3DViewport() {
                     </button>
                   ))}
                 </div>
+              </div>
 
-                <div className="w-[1px] h-4 bg-white/[0.08]" />
+              {/* Floating Bottom-Center Physics Layer Toggles */}
+              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-10 max-w-[96%] flex items-center gap-1.5 px-2 py-1 rounded-[4px] bg-[#0F1116] border border-[#222633] shadow-[0_10px_24px_rgba(0,0,0,0.6)] flex-nowrap">
+                {(
+                  [
+                    { key: "forceVectors", label: "Force Vectors" },
+                    { key: "frictionRings", label: "Saturation Rings" },
+                    { key: "rollCenterLines", label: "Roll Axis" },
+                    { key: "antiGeometryPlanes", label: "Anti-Dive/Squat" },
+                    { key: "wireframeChassis", label: "Wireframe" },
+                  ] as const
+                ).map((item) => {
+                  const active = layers[item.key];
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => toggleLayer(item.key)}
+                      className={`h-[22px] px-2 rounded-[3px] text-[10px] font-medium border cursor-pointer transition-colors whitespace-nowrap ${
+                        active
+                          ? "bg-[#C5A059]/14 border-[#C5A059]/45 text-[#DFBE78]"
+                          : "bg-[#08090C] border-[#222633] text-[#7E8899] hover:text-[#ECEFF4]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
 
-                {/* Quick Physics Layer Pills */}
-                <div className="flex items-center gap-1">
-                  {(
-                    [
-                      { key: "forceVectors", label: "Forces" },
-                      { key: "frictionRings", label: "Rings" },
-                      { key: "rollCenterLines", label: "Roll Axis" },
-                      { key: "antiGeometryPlanes", label: "Anti-Geom" },
-                      { key: "wireframeChassis", label: "Wireframe" },
-                    ] as const
-                  ).map((item) => {
-                    const active = layers[item.key];
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => toggleLayer(item.key)}
-                        className={`px-2 py-1 rounded-[4px] text-[10.5px] font-medium border cursor-pointer transition-colors ${
-                          active
-                            ? "bg-[#C5A059]/14 border-[#C5A059]/35 text-[#DFBE78]"
-                            : "bg-[#0B0D12] border-white/[0.06] text-[#94A3B8] hover:text-[#F1F5F9]"
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-white/[0.08] font-mono text-[10px]">
+                <div className="hidden xl:flex items-center gap-2 pl-2 ml-0.5 border-l border-[#222633] font-mono text-[9.5px] whitespace-nowrap">
                   <span className="text-[#DFBE78]">Fz</span>
                   <span className="text-[#38BDF8]">Fy</span>
                   <span className="text-[#34D399]">+Fx</span>

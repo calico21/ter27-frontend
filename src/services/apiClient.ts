@@ -362,6 +362,36 @@ export function applySetupPreset(
   );
 }
 
+export function dispatchMirenaCommand(
+  commandType: "reset_event" | "replay_seek" | "inject_ghost" | "set_grip_profile" | "set_fault_mode",
+  payload: Record<string, unknown>,
+  forceOffline = false
+): Promise<ApiResult<ApplySetupResponse>> {
+  const body: ApplySetupRequest = {
+    setup: {
+      __mirena_cmd: commandType,
+      ...payload,
+    },
+  };
+  return applySetupPreset(body, forceOffline);
+}
+
+export function dispatchEmergencyStop(
+  mode: "SOFT_STOP" | "HARD_SHUTDOWN" | "RESET",
+  reason: string,
+  forceOffline = false
+): Promise<ApiResult<ApplySetupResponse>> {
+  const body: ApplySetupRequest = {
+    setup: {
+      cmd: "emergency_stop",
+      mode,
+      reason,
+      timestamp_utc: new Date().toISOString(),
+    },
+  };
+  return applySetupPreset(body, forceOffline);
+}
+
 export function launchSimulationJob(
   req: SimulationRunRequest,
   forceOffline = false

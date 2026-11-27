@@ -16,6 +16,7 @@ import type {
 import { fetchSessionComparison, fetchSessionsList } from "../../services/apiClient";
 import { useTelemetryStore } from "../../state/telemetryStore";
 import { SplitPane } from "../layout/SplitPane";
+import { InstrumentHeader } from "../shared/PrecisionControl";
 import { SectorDeltaBreakdown } from "./SectorDeltaBreakdown";
 
 type AxisMode = "s_m" | "t_s";
@@ -40,10 +41,10 @@ const ALL_CHANNELS: ChannelSpec[] = [
   { key: "vx_mps", label: "Velocity vx", unit: "km/h", scale: 3.6 },
   { key: "delta_t_s", label: "Delta Time", unit: "s", scale: 1 },
   { key: "ay_g", label: "Lateral Accel ay", unit: "g", scale: 1 },
-  { key: "ax_g", label: "Longitudinal Accel ax", unit: "g", scale: 1 },
+  { key: "ax_g", label: "Long. Accel ax", unit: "g", scale: 1 },
   { key: "beta_deg", label: "Sideslip β", unit: "deg", scale: 1 },
   { key: "steer_deg", label: "Steer Angle", unit: "deg", scale: 1 },
-  { key: "mz_tv_nm", label: "TV Yaw Moment Mz", unit: "Nm", scale: 1 },
+  { key: "mz_tv_nm", label: "TV Moment Mz", unit: "Nm", scale: 1 },
 ];
 
 interface EngineeringNote {
@@ -98,18 +99,18 @@ function findNearestByX(
 function colorRamp(norm: number, mode: MapColorMode): string {
   const t = Math.max(0, Math.min(1, norm));
   if (mode === "delta_t") {
-    return t < 0.45 ? "#34D399" : t > 0.55 ? "#EF4444" : "#C5A059";
+    return t < 0.45 ? "#10B981" : t > 0.55 ? "#DC2626" : "#C5A059";
   }
   if (mode === "ax_g") {
-    return t < 0.42 ? "#EF4444" : t > 0.56 ? "#34D399" : "#C5A059";
+    return t < 0.42 ? "#DC2626" : t > 0.56 ? "#10B981" : "#C5A059";
   }
   if (mode === "util") {
-    return t > 0.9 ? "#EF4444" : t > 0.75 ? "#F59E0B" : "#34D399";
+    return t > 0.9 ? "#DC2626" : t > 0.75 ? "#D97706" : "#10B981";
   }
   if (t < 0.33) return "#38BDF8";
-  if (t < 0.68) return "#34D399";
+  if (t < 0.68) return "#10B981";
   if (t < 0.88) return "#DFBE78";
-  return "#EF4444";
+  return "#DC2626";
 }
 
 export function SessionABComparator() {
@@ -120,6 +121,7 @@ export function SessionABComparator() {
   const [comparison, setComparison] = useState<SessionABComparisonResponse | null>(null);
   const [axisMode, setAxisMode] = useState<AxisMode>("s_m");
   const [mapColorMode, setMapColorMode] = useState<MapColorMode>("speed");
+  const [rightBottomTab, setRightBottomTab] = useState<"sectors" | "notes">("sectors");
   const [activeChannels, setActiveChannels] = useState<TraceChannelKey[]>([
     "vx_mps",
     "delta_t_s",
@@ -236,7 +238,6 @@ export function SessionABComparator() {
     [notes, selectedSessionId]
   );
 
-  // Floating hover inspector data
   const hoverSnapshot = useMemo(() => {
     if (hoverX === null || !hoverPx || driverTrace.length < 2) return null;
     const sA = findNearestByX(driverTrace, axisMode, hoverX);
@@ -265,12 +266,12 @@ export function SessionABComparator() {
       ctx.save();
       ctx.scale(dpr, dpr);
 
-      ctx.fillStyle = "#0B0D12";
+      ctx.fillStyle = "#08090C";
       ctx.fillRect(0, 0, width, height);
 
-      const padLeft = 54;
-      const padRight = 14;
-      const axisFootH = 24;
+      const padLeft = 52;
+      const padRight = 12;
+      const axisFootH = 22;
       const plotW = Math.max(40, width - padLeft - padRight);
       const nLanes = Math.max(1, activeChannelSpecs.length);
       const laneH = (height - axisFootH) / nLanes;
@@ -279,7 +280,6 @@ export function SessionABComparator() {
 
       const xToPx = (xv: number) => padLeft + ((xv - xMin) / xSpan) * plotW;
 
-      // Shaded marker range [markerA, markerB]
       if (cursor.markerA !== null && cursor.markerB !== null) {
         const pxA = xToPx(Math.min(cursor.markerA, cursor.markerB));
         const pxB = xToPx(Math.max(cursor.markerA, cursor.markerB));
@@ -294,9 +294,9 @@ export function SessionABComparator() {
 
       activeChannelSpecs.forEach((ch, idx) => {
         const y0 = idx * laneH;
-        const headH = 22;
+        const headH = 20;
         const innerTop = y0 + headH + 4;
-        const innerBot = y0 + laneH - 7;
+        const innerBot = y0 + laneH - 6;
         const innerH = Math.max(18, innerBot - innerTop);
 
         let minV = Infinity;
@@ -321,11 +321,10 @@ export function SessionABComparator() {
         minV -= padV;
         maxV += padV;
 
-        // Subtle lane header tint & divider
         ctx.fillStyle = "rgba(255, 255, 255, 0.018)";
         ctx.fillRect(0, y0, width, headH);
         if (idx > 0) {
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+          ctx.strokeStyle = "#222633";
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(0, Math.round(y0) + 0.5);
@@ -334,12 +333,11 @@ export function SessionABComparator() {
         }
 
         ctx.fillStyle = "#94A3B8";
-        ctx.font = '600 10.5px "Plus Jakarta Sans", sans-serif';
+        ctx.font = '600 10px "Inter", sans-serif';
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(`${ch.label} (${ch.unit})`, 12, y0 + headH / 2);
+        ctx.fillText(`${ch.label} (${ch.unit})`, 10, y0 + headH / 2);
 
-        // Subtle dashed Y gridlines
         ctx.font = '9.5px "JetBrains Mono", monospace';
         ctx.textAlign = "right";
         const ticks = minV < 0 && maxV > 0 ? [minV, 0, maxV] : [minV, (minV + maxV) / 2, maxV];
@@ -348,7 +346,7 @@ export function SessionABComparator() {
           const isZero = Math.abs(tk) < 1e-4;
           ctx.save();
           ctx.strokeStyle = isZero
-            ? "rgba(255, 255, 255, 0.11)"
+            ? "rgba(255, 255, 255, 0.12)"
             : "rgba(255, 255, 255, 0.045)";
           if (!isZero) ctx.setLineDash([3, 4]);
           ctx.beginPath();
@@ -358,7 +356,7 @@ export function SessionABComparator() {
           ctx.restore();
 
           ctx.fillStyle = isZero ? "#94A3B8" : "#64748B";
-          ctx.fillText(tk.toFixed(1), padLeft - 7, py);
+          ctx.fillText(tk.toFixed(1), padLeft - 6, py);
         }
 
         const buildPoints = (trace: TrajectorySample[]) => {
@@ -377,7 +375,6 @@ export function SessionABComparator() {
         const ptsA = buildPoints(driverTrace);
         const ptsB = buildPoints(refTrace);
 
-        // Soft vertical gradient fill under Driver Trace A
         if (ptsA.length > 1) {
           ctx.save();
           const grad = ctx.createLinearGradient(0, innerTop, 0, innerBot);
@@ -408,9 +405,8 @@ export function SessionABComparator() {
         };
 
         strokePoints(ptsB, "#38BDF8", 1.55);
-        strokePoints(ptsA, "#DFBE78", 1.9);
+        strokePoints(ptsA, "#C5A059", 1.9);
 
-        // Right-aligned live A/B numeric readout on lane header
         const activeX = hoverX ?? (axisMode === "s_m" ? cursor.cursorDistanceM : cursor.cursorTimeS);
         const sA = findNearestByX(driverTrace, axisMode, activeX);
         const sB = findNearestByX(refTrace, axisMode, activeX);
@@ -418,28 +414,27 @@ export function SessionABComparator() {
           const vA = sampleValue(sA, ch);
           const vB = sampleValue(sB, ch);
           const diff = vA - vB;
-          ctx.font = '500 10px "JetBrains Mono", monospace';
+          ctx.font = '500 9.5px "JetBrains Mono", monospace';
           ctx.textAlign = "right";
           ctx.fillStyle = "#CBD5E1";
           ctx.fillText(
-            `A ${vA.toFixed(2)}   B ${vB.toFixed(2)}   Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} ${ch.unit}`,
-            width - 12,
+            `A ${vA.toFixed(2)}  B ${vB.toFixed(2)}  Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} ${ch.unit}`,
+            width - 10,
             y0 + headH / 2
           );
         }
       });
 
-      // Bottom X axis ruler
       const axisY = height - axisFootH;
-      ctx.fillStyle = "#11141B";
+      ctx.fillStyle = "#0F1116";
       ctx.fillRect(0, axisY, width, axisFootH);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+      ctx.strokeStyle = "#222633";
       ctx.beginPath();
       ctx.moveTo(0, axisY + 0.5);
       ctx.lineTo(width, axisY + 0.5);
       ctx.stroke();
 
-      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.font = '9.5px "JetBrains Mono", monospace';
       ctx.fillStyle = "#64748B";
       ctx.textBaseline = "middle";
       for (let g = 0; g <= 6; g++) {
@@ -449,13 +444,12 @@ export function SessionABComparator() {
         ctx.fillText(`${xv.toFixed(1)} ${axisMode === "s_m" ? "m" : "s"}`, px, axisY + axisFootH / 2);
       }
 
-      // Engineering annotations markers
       if (axisMode === "s_m") {
         for (const note of sessionNotes) {
           if (note.distanceM < xMin || note.distanceM > xMax) continue;
           const nx = xToPx(note.distanceM);
           ctx.save();
-          ctx.strokeStyle = "#F59E0B";
+          ctx.strokeStyle = "#D97706";
           ctx.setLineDash([2, 3]);
           ctx.beginPath();
           ctx.moveTo(Math.round(nx) + 0.5, 0);
@@ -465,10 +459,9 @@ export function SessionABComparator() {
         }
       }
 
-      // Markers A and B vertical lines
       if (cursor.markerA !== null && cursor.markerA >= xMin && cursor.markerA <= xMax) {
         const px = xToPx(cursor.markerA);
-        ctx.strokeStyle = "#DFBE78";
+        ctx.strokeStyle = "#C5A059";
         ctx.lineWidth = 1.4;
         ctx.beginPath();
         ctx.moveTo(Math.round(px) + 0.5, 0);
@@ -485,12 +478,11 @@ export function SessionABComparator() {
         ctx.stroke();
       }
 
-      // Global synchronized cursor crosshair
       const currX = hoverX ?? (axisMode === "s_m" ? cursor.cursorDistanceM : cursor.cursorTimeS);
       if (currX >= xMin && currX <= xMax) {
         const cx = xToPx(currX);
         ctx.save();
-        ctx.strokeStyle = "rgba(241, 245, 249, 0.72)";
+        ctx.strokeStyle = "rgba(236, 239, 244, 0.72)";
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
@@ -500,13 +492,12 @@ export function SessionABComparator() {
         ctx.restore();
       }
 
-      // Drag-zoom selection band
       if (dragStartPx !== null && dragCurrPx !== null) {
         const left = Math.min(dragStartPx, dragCurrPx);
         const wSel = Math.abs(dragCurrPx - dragStartPx);
         ctx.fillStyle = "rgba(197, 160, 89, 0.16)";
         ctx.fillRect(left, 0, wSel, axisY);
-        ctx.strokeStyle = "#DFBE78";
+        ctx.strokeStyle = "#C5A059";
         ctx.lineWidth = 1;
         ctx.strokeRect(left, 0, wSel, axisY);
       }
@@ -540,9 +531,12 @@ export function SessionABComparator() {
     if (!canvas || driverTrace.length < 2) return;
 
     const render = () => {
+      const parent = canvas.parentElement;
+      if (!parent) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = canvas.clientWidth || 260;
-      const h = canvas.clientHeight || 200;
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+      if (w < 40 || h < 40) return;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       const ctx = canvas.getContext("2d");
@@ -550,7 +544,7 @@ export function SessionABComparator() {
 
       ctx.save();
       ctx.scale(dpr, dpr);
-      ctx.fillStyle = "#0B0D12";
+      ctx.fillStyle = "#08090C";
       ctx.fillRect(0, 0, w, h);
 
       let minX = Infinity,
@@ -568,7 +562,7 @@ export function SessionABComparator() {
         if (p.vx_mps > maxSpd) maxSpd = p.vx_mps;
       }
 
-      const pad = 22;
+      const pad = 18;
       const spanX = Math.max(1, maxX - minX);
       const spanY = Math.max(1, maxY - minY);
       const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
@@ -582,9 +576,8 @@ export function SessionABComparator() {
 
       const [vMin, vMax] = viewDomain;
 
-      // Subtle asphalt ribbon underpath
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
-      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+      ctx.lineWidth = 5;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -595,7 +588,6 @@ export function SessionABComparator() {
       });
       ctx.stroke();
 
-      // Colored velocity / delta track segments
       for (let i = 1; i < driverTrace.length; i++) {
         const p0 = driverTrace[i - 1];
         const p1 = driverTrace[i];
@@ -617,14 +609,13 @@ export function SessionABComparator() {
         }
 
         ctx.strokeStyle = inZoom ? colorRamp(norm, mapColorMode) : "rgba(148,163,184,0.14)";
-        ctx.lineWidth = inZoom ? 2.8 : 1.4;
+        ctx.lineWidth = inZoom ? 2.6 : 1.3;
         ctx.beginPath();
         ctx.moveTo(a.sx, a.sy);
         ctx.lineTo(b.sx, b.sy);
         ctx.stroke();
       }
 
-      // Active synchronized position marker with subtle gold ring
       const currSample = findNearestByX(
         driverTrace,
         axisMode,
@@ -632,20 +623,15 @@ export function SessionABComparator() {
       );
       if (currSample) {
         const pt = toScreen(currSample.x_m, currSample.y_m);
-        ctx.fillStyle = "rgba(223, 190, 120, 0.22)";
+        ctx.strokeStyle = "#C5A059";
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
-        ctx.arc(pt.sx, pt.sy, 10, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = "#DFBE78";
-        ctx.lineWidth = 1.75;
-        ctx.beginPath();
-        ctx.arc(pt.sx, pt.sy, 7, 0, Math.PI * 2);
+        ctx.arc(pt.sx, pt.sy, 6.5, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.fillStyle = "#F1F5F9";
+        ctx.fillStyle = "#ECEFF4";
         ctx.beginPath();
-        ctx.arc(pt.sx, pt.sy, 3.5, 0, Math.PI * 2);
+        ctx.arc(pt.sx, pt.sy, 2.8, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -672,9 +658,12 @@ export function SessionABComparator() {
     if (!canvas || driverTrace.length < 2) return;
 
     const render = () => {
+      const parent = canvas.parentElement;
+      if (!parent) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = canvas.clientWidth || 220;
-      const h = canvas.clientHeight || 200;
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+      if (w < 40 || h < 40) return;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       const ctx = canvas.getContext("2d");
@@ -682,21 +671,20 @@ export function SessionABComparator() {
 
       ctx.save();
       ctx.scale(dpr, dpr);
-      ctx.fillStyle = "#0B0D12";
+      ctx.fillStyle = "#08090C";
       ctx.fillRect(0, 0, w, h);
 
       const cx = w / 2;
       const cy = h / 2;
-      const maxR = Math.max(30, Math.min(w, h) * 0.42);
+      const maxR = Math.max(26, Math.min(w, h) * 0.42);
       const maxG = 2.0;
 
-      // Concentric g rings
       ctx.font = '9px "JetBrains Mono", monospace';
       for (const gRing of [0.5, 1.0, 1.5, 2.0]) {
         const r = (gRing / maxG) * maxR;
         ctx.save();
         ctx.strokeStyle =
-          gRing === 1.5 ? "rgba(197, 160, 89, 0.25)" : "rgba(255, 255, 255, 0.06)";
+          gRing === 1.5 ? "rgba(197, 160, 89, 0.25)" : "rgba(255, 255, 255, 0.055)";
         if (gRing !== 2.0) ctx.setLineDash([2, 4]);
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -704,10 +692,9 @@ export function SessionABComparator() {
         ctx.restore();
 
         ctx.fillStyle = "#64748B";
-        ctx.fillText(`${gRing.toFixed(1)}g`, cx + 4, cy - r + 9);
+        ctx.fillText(`${gRing.toFixed(1)}g`, cx + 3, cy - r + 9);
       }
 
-      // Crosshairs
       ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
       ctx.beginPath();
       ctx.moveTo(cx - maxR, cy);
@@ -719,32 +706,29 @@ export function SessionABComparator() {
       const [vMin, vMax] = viewDomain;
       const isZoomed = zoomRange !== null;
 
-      // Background points
       for (let i = 0; i < driverTrace.length; i += 2) {
         const p = driverTrace[i];
         const inSeg = p[axisMode] >= vMin && p[axisMode] <= vMax;
         if (inSeg && isZoomed) continue;
         const px = cx + (p.ay_g / maxG) * maxR;
         const py = cy - (p.ax_g / maxG) * maxR;
-        ctx.fillStyle = isZoomed ? "rgba(148, 163, 184, 0.16)" : "rgba(56, 189, 248, 0.38)";
+        ctx.fillStyle = isZoomed ? "rgba(148, 163, 184, 0.14)" : "rgba(56, 189, 248, 0.36)";
         ctx.beginPath();
         ctx.arc(px, py, 1.4, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Active segment points in warm gold
       for (let i = 0; i < driverTrace.length; i++) {
         const p = driverTrace[i];
         if (p[axisMode] < vMin || p[axisMode] > vMax) continue;
         const px = cx + (p.ay_g / maxG) * maxR;
         const py = cy - (p.ax_g / maxG) * maxR;
-        ctx.fillStyle = "rgba(223, 190, 120, 0.85)";
+        ctx.fillStyle = "rgba(197, 160, 89, 0.85)";
         ctx.beginPath();
-        ctx.arc(px, py, 1.7, 0, Math.PI * 2);
+        ctx.arc(px, py, 1.6, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Current cursor point
       const curr = findNearestByX(
         driverTrace,
         axisMode,
@@ -753,15 +737,15 @@ export function SessionABComparator() {
       if (curr) {
         const px = cx + (curr.ay_g / maxG) * maxR;
         const py = cy - (curr.ax_g / maxG) * maxR;
-        ctx.strokeStyle = "#DFBE78";
+        ctx.strokeStyle = "#C5A059";
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.arc(px, py, 5.5, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.fillStyle = "#F1F5F9";
+        ctx.fillStyle = "#ECEFF4";
         ctx.beginPath();
-        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.arc(px, py, 2.6, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -772,12 +756,20 @@ export function SessionABComparator() {
     const ro = new ResizeObserver(render);
     ro.observe(canvas);
     return () => ro.disconnect();
-  }, [axisMode, cursor.cursorDistanceM, cursor.cursorTimeS, driverTrace, hoverX, viewDomain, zoomRange]);
+  }, [
+    axisMode,
+    cursor.cursorDistanceM,
+    cursor.cursorTimeS,
+    driverTrace,
+    hoverX,
+    viewDomain,
+    zoomRange,
+  ]);
 
   const pxToXVal = useCallback(
     (clientX: number, rect: DOMRect) => {
-      const padLeft = 54;
-      const padRight = 14;
+      const padLeft = 52;
+      const padRight = 12;
       const plotW = Math.max(1, rect.width - padLeft - padRight);
       const norm = Math.max(0, Math.min(1, (clientX - rect.left - padLeft) / plotW));
       return viewDomain[0] + norm * (viewDomain[1] - viewDomain[0]);
@@ -878,7 +870,7 @@ export function SessionABComparator() {
       if (p.y_m < minY) minY = p.y_m;
       if (p.y_m > maxY) maxY = p.y_m;
     }
-    const pad = 22;
+    const pad = 18;
     const spanX = Math.max(1, maxX - minX);
     const spanY = Math.max(1, maxY - minY);
     const scale = Math.min((rect.width - pad * 2) / spanX, (rect.height - pad * 2) / spanY);
@@ -935,6 +927,7 @@ export function SessionABComparator() {
     saveNotes(updated);
     setNoteInput("");
     setShowNoteForm(false);
+    setRightBottomTab("notes");
     pushToast({
       level: "nominal",
       title: `Annotation Saved @ s = ${newNote.distanceM} m`,
@@ -955,7 +948,8 @@ export function SessionABComparator() {
         : [
             "session_id,distance_m,created_at,note",
             ...sessionNotes.map(
-              (n) => `"${n.sessionId}",${n.distanceM},"${n.createdAt}","${n.text.replace(/"/g, '""')}"`
+              (n) =>
+                `"${n.sessionId}",${n.distanceM},"${n.createdAt}","${n.text.replace(/"/g, '""')}"`
             ),
           ].join("\n");
     const blob = new Blob([content], {
@@ -970,204 +964,197 @@ export function SessionABComparator() {
   };
 
   return (
-    <div className="w-full h-full min-h-0 flex flex-col gap-2 overflow-hidden">
-      {/* Forensics Control Header Bar */}
-      <div className="machined-panel shrink-0 px-3.5 py-2 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="panel-title-label">Session A/B Forensics</span>
-          <select
-            value={selectedSessionId}
-            onChange={(e) => setSelectedSessionId(e.target.value)}
-            className="h-[28px] bg-[#0B0D12] border border-white/[0.08] text-[#F1F5F9] text-[11.5px] px-2.5 rounded-[5px] max-w-[320px] outline-none hover:border-white/[0.16] transition-colors"
-          >
-            {sessions.map((s) => (
-              <option key={s.session_id} value={s.session_id} className="bg-[#11141B]">
-                {s.title}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="status-pill status-pill-gold">
-              <span className="w-2 h-0.5 rounded-full bg-[#DFBE78]" />
-              Trace A · Driver / 14-DOF
+    <div className="w-full h-full min-h-0 flex flex-col gap-1.5 overflow-hidden">
+      {/* Compact Single-Row Forensics Toolbar */}
+      <div className="machined-panel shrink-0 overflow-hidden">
+        <div className="inst-header !h-[32px] gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <span className="panel-title-label shrink-0">Lap Forensics A/B</span>
+            <select
+              value={selectedSessionId}
+              onChange={(e) => setSelectedSessionId(e.target.value)}
+              className="h-[22px] bg-[#08090C] border border-[#222633] text-[#ECEFF4] text-[10.5px] px-2 rounded-[3px] max-w-[260px] min-w-[140px] outline-none focus:border-[#C5A059]"
+            >
+              {sessions.map((s) => (
+                <option key={s.session_id} value={s.session_id} className="bg-[#0F1116]">
+                  {s.title}
+                </option>
+              ))}
+            </select>
+            <span className="hidden xl:inline-flex items-center gap-1.5 font-mono text-[9.5px] text-[#DFBE78] shrink-0">
+              <span className="w-2 h-[2px] bg-[#C5A059]" />A Driver
             </span>
-            <span className="status-pill bg-[#38BDF8]/12 text-[#38BDF8]">
-              <span className="w-2 h-0.5 rounded-full bg-[#38BDF8]" />
-              Trace B · CasADi Optimal
+            <span className="hidden xl:inline-flex items-center gap-1.5 font-mono text-[9.5px] text-[#38BDF8] shrink-0">
+              <span className="w-2 h-[2px] bg-[#38BDF8]" />B CasADi
             </span>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="seg-track" role="group" aria-label="X-axis mode">
-            <button
-              type="button"
-              data-active={axisMode === "s_m" ? "true" : "false"}
-              onClick={() => {
-                setAxisMode("s_m");
-                setZoomRange(null);
-              }}
-              className="seg-btn"
-            >
-              Distance s
-            </button>
-            <button
-              type="button"
-              data-active={axisMode === "t_s" ? "true" : "false"}
-              onClick={() => {
-                setAxisMode("t_s");
-                setZoomRange(null);
-              }}
-              className="seg-btn"
-            >
-              Time t
-            </button>
-          </div>
-
-          <div className="seg-track" role="group" aria-label="Cursor interaction mode">
-            {(
-              [
-                { id: "zoom", label: "Drag Zoom" },
-                { id: "markerA", label: "Set A" },
-                { id: "markerB", label: "Set B" },
-              ] as const
-            ).map((m) => (
+          <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
+            <div className="seg-track">
               <button
-                key={m.id}
                 type="button"
-                data-active={markerMode === m.id ? "true" : "false"}
-                onClick={() => setMarkerMode(m.id)}
+                data-active={axisMode === "s_m" ? "true" : "false"}
+                onClick={() => {
+                  setAxisMode("s_m");
+                  setZoomRange(null);
+                }}
                 className="seg-btn"
               >
-                {m.label}
+                Dist s
               </button>
-            ))}
+              <button
+                type="button"
+                data-active={axisMode === "t_s" ? "true" : "false"}
+                onClick={() => {
+                  setAxisMode("t_s");
+                  setZoomRange(null);
+                }}
+                className="seg-btn"
+              >
+                Time t
+              </button>
+            </div>
+
+            <div className="seg-track">
+              {(
+                [
+                  { id: "zoom", label: "Zoom" },
+                  { id: "markerA", label: "Set A" },
+                  { id: "markerB", label: "Set B" },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  data-active={markerMode === m.id ? "true" : "false"}
+                  onClick={() => setMarkerMode(m.id)}
+                  className="seg-btn"
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setZoomRange(null);
+                setCursor((c) => ({ ...c, markerA: null, markerB: null }));
+              }}
+              className="h-[22px] px-2 rounded-[3px] bg-[#151820] border border-[#222633] text-[10px] font-medium text-[#CBD5E1] hover:border-[#C5A059]/45 hover:text-[#DFBE78] flex items-center gap-1 cursor-pointer"
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              Reset
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDrawerOpen((o) => !o)}
+              className={`h-[22px] px-2 rounded-[3px] border text-[10px] font-medium flex items-center gap-1 cursor-pointer ${
+                drawerOpen
+                  ? "border-[#C5A059]/50 bg-[#C5A059]/14 text-[#DFBE78]"
+                  : "border-[#222633] bg-[#151820] text-[#CBD5E1] hover:border-[#343B4E]"
+              }`}
+            >
+              <Sliders className="w-2.5 h-2.5" />
+              Ch ({activeChannels.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowNoteForm((v) => !v)}
+              className="h-[22px] px-2 rounded-[3px] border border-[#C5A059]/40 bg-[#C5A059]/12 text-[#DFBE78] hover:bg-[#C5A059]/20 text-[10px] font-medium flex items-center gap-1 cursor-pointer"
+            >
+              <MessageSquarePlus className="w-2.5 h-2.5" />
+              Note @{cursor.cursorDistanceM.toFixed(0)}m
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setZoomRange(null);
-              setCursor((c) => ({ ...c, markerA: null, markerB: null }));
-            }}
-            className="flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] bg-[#161A23] border border-white/[0.08] text-[11px] font-medium text-[#E2E8F0] hover:border-[#C5A059]/45 hover:text-[#DFBE78] cursor-pointer transition-colors"
-          >
-            <RotateCcw className="w-3 h-3" />
-            Reset
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDrawerOpen((o) => !o)}
-            className={`flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] border text-[11px] font-medium cursor-pointer transition-colors ${
-              drawerOpen
-                ? "border-[#C5A059]/45 bg-[#C5A059]/12 text-[#DFBE78]"
-                : "border-white/[0.08] bg-[#161A23] text-[#E2E8F0] hover:border-white/[0.18]"
-            }`}
-          >
-            <Sliders className="w-3 h-3" />
-            Channels ({activeChannels.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowNoteForm((v) => !v)}
-            className="flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] border border-[#C5A059]/35 bg-[#C5A059]/10 text-[#DFBE78] hover:bg-[#C5A059]/18 text-[11px] font-medium cursor-pointer transition-colors"
-          >
-            <MessageSquarePlus className="w-3 h-3" />
-            Note @ {cursor.cursorDistanceM.toFixed(0)} m
-          </button>
         </div>
+
+        {/* Optional Dual A-B Marker Stats Bar */}
+        {markerStats ? (
+          <div className="h-[24px] px-3 bg-[#0F1116] border-t border-[#222633] flex items-center justify-between gap-3 text-[10px] font-mono tabular">
+            <span className="text-[#DFBE78] font-semibold">
+              A–B · {markerStats.channelLabel}
+            </span>
+            <div className="flex items-center gap-3 text-[#CBD5E1]">
+              <span>Δs {markerStats.deltaS.toFixed(1)}m</span>
+              <span>Δt {markerStats.deltaT.toFixed(3)}s</span>
+              <span>Mean A {markerStats.meanA.toFixed(2)}</span>
+              <span className="text-[#38BDF8]">Mean B {markerStats.meanB.toFixed(2)}</span>
+              <span className="text-[#DFBE78]">
+                ΔMean {markerStats.diffMean >= 0 ? "+" : ""}
+                {markerStats.diffMean.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Optional Inline Note Form */}
+        {showNoteForm ? (
+          <div className="px-2.5 py-1.5 bg-[#0F1116] border-t border-[#C5A059]/35 flex items-center gap-2 text-[10.5px]">
+            <span className="font-mono text-[#DFBE78] shrink-0">
+              s = {cursor.cursorDistanceM.toFixed(1)} m
+            </span>
+            <input
+              type="text"
+              value={noteInput}
+              onChange={(e) => setNoteInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addEngineeringNote();
+              }}
+              placeholder="Add distance-anchored engineering observation..."
+              className="flex-1 h-[24px] bg-[#08090C] border border-[#222633] rounded-[3px] px-2 text-[#ECEFF4] placeholder-[#64748B] outline-none focus:border-[#C5A059]"
+            />
+            <button
+              type="button"
+              onClick={addEngineeringNote}
+              className="h-[24px] px-2.5 rounded-[3px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] font-semibold text-[10px] cursor-pointer"
+            >
+              Save
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      {/* Range A-B Marker Summary Banner */}
-      {markerStats ? (
-        <div className="machined-card shrink-0 px-3.5 py-2 flex items-center justify-between gap-4 flex-wrap text-[11px]">
-          <span className="font-semibold text-[#DFBE78]">
-            Range A–B · {markerStats.channelLabel}
-          </span>
-          <div className="flex items-center gap-4 font-mono tabular text-[#E2E8F0]">
-            <span>Δs {markerStats.deltaS.toFixed(2)} m</span>
-            <span>Δt {markerStats.deltaT.toFixed(3)} s</span>
-            <span>Min A {markerStats.minA.toFixed(2)}</span>
-            <span>Max A {markerStats.maxA.toFixed(2)}</span>
-            <span>Mean A {markerStats.meanA.toFixed(2)}</span>
-            <span className="text-[#38BDF8]">Mean B {markerStats.meanB.toFixed(2)}</span>
-            <span className="status-pill status-pill-gold">
-              ΔMean {markerStats.diffMean >= 0 ? "+" : ""}
-              {markerStats.diffMean.toFixed(2)}
-            </span>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Inline Annotation Entry Bar */}
-      {showNoteForm ? (
-        <div className="machined-card shrink-0 px-3.5 py-2 border-[#C5A059]/45 flex items-center gap-2.5 text-[11.5px]">
-          <span className="font-mono text-[#DFBE78] shrink-0">
-            s = {cursor.cursorDistanceM.toFixed(1)} m
-          </span>
-          <input
-            type="text"
-            value={noteInput}
-            onChange={(e) => setNoteInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") addEngineeringNote();
-            }}
-            placeholder='Add setup observation (e.g. "Entry understeer T4 — test +0.15° front toe-out")'
-            className="flex-1 h-[28px] bg-[#0B0D12] border border-white/[0.09] rounded-[5px] px-2.5 text-[#F1F5F9] placeholder-[#64748B] outline-none focus:border-[#C5A059]/60"
-          />
-          <button
-            type="button"
-            onClick={addEngineeringNote}
-            className="h-[28px] px-3 rounded-[5px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] font-semibold text-[11px] cursor-pointer transition-colors"
-          >
-            Save Note
-          </button>
-        </div>
-      ) : null}
-
-      {/* Main Split Forensics Stage */}
-      <div className="flex-1 min-h-0 flex gap-2 overflow-hidden relative">
+      {/* Main 64% / 36% Forensics Split Stage */}
+      <div className="flex-1 min-h-0 flex gap-1.5 overflow-hidden">
         {drawerOpen ? (
-          <div className="machined-panel w-[236px] shrink-0 flex flex-col overflow-hidden">
-            <div className="panel-header-bar">
-              <span className="panel-title-label">Channel Order</span>
-            </div>
-            <div className="p-2.5 space-y-1.5 overflow-y-auto">
+          <div className="machined-panel w-[214px] shrink-0 flex flex-col overflow-hidden">
+            <InstrumentHeader title="Channel Picker" />
+            <div className="p-1.5 space-y-1 overflow-y-auto">
               {ALL_CHANNELS.map((ch) => {
                 const idx = activeChannels.indexOf(ch.key);
                 const enabled = idx >= 0;
                 return (
                   <div
                     key={ch.key}
-                    className="machined-card flex items-center justify-between gap-1.5 px-2.5 py-1.5 text-[11px]"
+                    className="h-[26px] rounded-[3px] bg-[#141720] border border-[#222633] flex items-center justify-between gap-1 px-2 text-[10.5px]"
                   >
-                    <label className="flex items-center gap-2 cursor-pointer truncate">
+                    <label className="flex items-center gap-1.5 cursor-pointer truncate">
                       <input
                         type="checkbox"
                         checked={enabled}
                         onChange={() => toggleChannel(ch.key)}
                         className="accent-[#C5A059]"
                       />
-                      <span className={enabled ? "text-[#F1F5F9] font-medium" : "text-[#64748B]"}>
+                      <span className={enabled ? "text-[#ECEFF4]" : "text-[#64748B]"}>
                         {ch.label}
                       </span>
                     </label>
                     {enabled ? (
-                      <div className="flex items-center gap-0.5 shrink-0">
+                      <div className="flex items-center shrink-0">
                         <button
                           type="button"
                           onClick={() => moveChannel(ch.key, -1)}
-                          className="p-1 rounded text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/[0.06] cursor-pointer"
+                          className="p-0.5 text-[#7E8899] hover:text-[#ECEFF4] cursor-pointer"
                         >
                           <ArrowUp className="w-3 h-3" />
                         </button>
                         <button
                           type="button"
                           onClick={() => moveChannel(ch.key, 1)}
-                          className="p-1 rounded text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/[0.06] cursor-pointer"
+                          className="p-0.5 text-[#7E8899] hover:text-[#ECEFF4] cursor-pointer"
                         >
                           <ArrowDown className="w-3 h-3" />
                         </button>
@@ -1177,204 +1164,241 @@ export function SessionABComparator() {
                 );
               })}
             </div>
-
-            <div className="panel-header-bar border-t border-white/[0.06] mt-1">
-              <span className="panel-title-label">Annotations ({sessionNotes.length})</span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => exportNotes("json")}
-                  className="text-[10.5px] font-medium text-[#94A3B8] hover:text-[#DFBE78] cursor-pointer"
-                >
-                  JSON
-                </button>
-                <button
-                  type="button"
-                  onClick={() => exportNotes("csv")}
-                  className="text-[10.5px] font-medium text-[#94A3B8] hover:text-[#DFBE78] cursor-pointer flex items-center gap-1"
-                >
-                  <Download className="w-3 h-3" />
-                  CSV
-                </button>
-              </div>
-            </div>
-            <div className="p-2.5 space-y-1.5 flex-1 overflow-y-auto">
-              {sessionNotes.length === 0 ? (
-                <div className="text-[11px] text-[#64748B]">No annotations saved for this session.</div>
-              ) : (
-                sessionNotes.map((n) => (
-                  <div key={n.id} className="machined-card p-2 text-[11px]">
-                    <div className="flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAxisMode("s_m");
-                          setZoomRange([Math.max(0, n.distanceM - 12), n.distanceM + 12]);
-                        }}
-                        className="font-mono text-[10.5px] text-[#DFBE78] hover:underline cursor-pointer"
-                      >
-                        s = {n.distanceM.toFixed(1)} m
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteNote(n.id)}
-                        className="text-[#64748B] hover:text-[#F87171] cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <div className="text-[#E2E8F0] mt-1 leading-snug">{n.text}</div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         ) : null}
 
         <div className="flex-1 min-w-0 min-h-0">
           <SplitPane
             direction="horizontal"
-            initialRatio={0.63}
-            minRatio={0.35}
-            maxRatio={0.78}
+            initialRatio={0.64}
+            minRatio={0.44}
+            maxRatio={0.76}
             first={
-              <SplitPane
-                direction="vertical"
-                initialRatio={0.67}
-                minRatio={0.35}
-                maxRatio={0.82}
-                first={
-                  <div
-                    ref={traceContainerRef}
-                    className="machined-panel w-full h-full min-h-0 relative overflow-hidden"
-                  >
-                    <canvas
-                      ref={traceCanvasRef}
-                      onMouseDown={handleTraceMouseDown}
-                      onMouseMove={handleTraceMouseMove}
-                      onMouseUp={handleTraceMouseUp}
-                      onMouseLeave={() => {
-                        setHoverX(null);
-                        setHoverPx(null);
-                        setDragStartPx(null);
-                        setDragCurrPx(null);
-                      }}
-                      onDoubleClick={() => setZoomRange(null)}
-                      onWheel={handleTraceWheel}
-                      className="block w-full h-full cursor-crosshair"
-                    />
+              <div
+                ref={traceContainerRef}
+                className="machined-panel w-full h-full min-h-0 relative overflow-hidden"
+              >
+                <canvas
+                  ref={traceCanvasRef}
+                  onMouseDown={handleTraceMouseDown}
+                  onMouseMove={handleTraceMouseMove}
+                  onMouseUp={handleTraceMouseUp}
+                  onMouseLeave={() => {
+                    setHoverX(null);
+                    setHoverPx(null);
+                    setDragStartPx(null);
+                    setDragCurrPx(null);
+                  }}
+                  onDoubleClick={() => setZoomRange(null)}
+                  onWheel={handleTraceWheel}
+                  className="block w-full h-full cursor-crosshair"
+                />
 
-                    {/* Floating A/B Crosshair Readout Popover */}
-                    {hoverSnapshot && dragStartPx === null ? (
-                      <div
-                        className="pointer-events-none absolute top-3 z-20 w-[230px] rounded-[6px] bg-[#141821]/95 border border-white/[0.11] shadow-[0_12px_28px_rgba(0,0,0,0.55)] p-2.5 text-[10.5px]"
-                        style={{
-                          left:
-                            hoverSnapshot.pxX + 248 > hoverSnapshot.width
-                              ? Math.max(58, hoverSnapshot.pxX - 242)
-                              : hoverSnapshot.pxX + 14,
-                        }}
-                      >
-                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/[0.07]">
-                          <span className="font-semibold text-[#F1F5F9]">A / B Cursor</span>
-                          <span className="font-mono text-[10px] text-[#DFBE78] tabular">
-                            {hoverSnapshot.sA.s_m.toFixed(1)} m · {hoverSnapshot.sA.t_s.toFixed(2)} s
-                          </span>
-                        </div>
-                        <div className="space-y-1 font-mono text-[10px] tabular">
-                          {activeChannelSpecs.map((ch) => {
-                            const vA = sampleValue(hoverSnapshot.sA, ch);
-                            const vB = sampleValue(hoverSnapshot.sB, ch);
-                            const d = vA - vB;
-                            return (
-                              <div key={ch.key} className="flex items-center justify-between gap-2">
-                                <span className="text-[#94A3B8] truncate">{ch.label}</span>
-                                <span className="text-right whitespace-nowrap">
-                                  <span className="text-[#DFBE78]">{vA.toFixed(1)}</span>
-                                  <span className="text-[#64748B]"> / </span>
-                                  <span className="text-[#38BDF8]">{vB.toFixed(1)}</span>
-                                  <span
-                                    className={`ml-1.5 ${
-                                      d >= 0 ? "text-[#34D399]" : "text-[#F87171]"
-                                    }`}
-                                  >
-                                    ({d >= 0 ? "+" : ""}
-                                    {d.toFixed(1)})
-                                  </span>
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                }
-                second={
-                  <SectorDeltaBreakdown
-                    driverTrace={driverTrace}
-                    refTrace={refTrace}
-                    onSelectSectorRange={(sStart, sEnd) => {
-                      setAxisMode("s_m");
-                      setZoomRange([sStart, sEnd]);
+                {hoverSnapshot && dragStartPx === null ? (
+                  <div
+                    className="pointer-events-none absolute top-2.5 z-20 w-[215px] rounded-[3px] bg-[#0F1116]/95 border border-[#2A3040] shadow-[0_10px_24px_rgba(0,0,0,0.6)] p-2 text-[10px]"
+                    style={{
+                      left:
+                        hoverSnapshot.pxX + 230 > hoverSnapshot.width
+                          ? Math.max(54, hoverSnapshot.pxX - 226)
+                          : hoverSnapshot.pxX + 12,
                     }}
-                  />
-                }
-              />
+                  >
+                    <div className="flex items-center justify-between pb-1 mb-1 border-b border-[#222633]">
+                      <span className="font-semibold text-[#ECEFF4]">A / B Cursor</span>
+                      <span className="font-mono text-[#DFBE78] tabular">
+                        {hoverSnapshot.sA.s_m.toFixed(1)}m · {hoverSnapshot.sA.t_s.toFixed(2)}s
+                      </span>
+                    </div>
+                    <div className="space-y-0.5 font-mono tabular">
+                      {activeChannelSpecs.map((ch) => {
+                        const vA = sampleValue(hoverSnapshot.sA, ch);
+                        const vB = sampleValue(hoverSnapshot.sB, ch);
+                        const d = vA - vB;
+                        return (
+                          <div key={ch.key} className="flex items-center justify-between gap-1.5">
+                            <span className="text-[#7E8899] truncate">{ch.label}</span>
+                            <span className="text-right whitespace-nowrap">
+                              <span className="text-[#DFBE78]">{vA.toFixed(1)}</span>
+                              <span className="text-[#475569]">/</span>
+                              <span className="text-[#38BDF8]">{vB.toFixed(1)}</span>
+                              <span
+                                className={`ml-1 ${
+                                  d >= 0 ? "text-[#34D399]" : "text-[#F87171]"
+                                }`}
+                              >
+                                ({d >= 0 ? "+" : ""}
+                                {d.toFixed(1)})
+                              </span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             }
             second={
               <SplitPane
                 direction="vertical"
-                initialRatio={0.55}
-                minRatio={0.3}
-                maxRatio={0.75}
+                initialRatio={0.48}
+                minRatio={0.32}
+                maxRatio={0.66}
                 first={
-                  <div className="machined-panel flex flex-col w-full h-full min-h-0 overflow-hidden">
-                    <div className="panel-header-bar gap-2">
-                      <span className="panel-title-label">2D Track Map</span>
-                      <div className="seg-track">
-                        {(
-                          [
-                            { id: "speed", label: "Speed" },
-                            { id: "delta_t", label: "Δt" },
-                            { id: "ay_g", label: "|ay|" },
-                            { id: "ax_g", label: "ax" },
-                          ] as const
-                        ).map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            data-active={mapColorMode === m.id ? "true" : "false"}
-                            onClick={() => setMapColorMode(m.id)}
-                            className="seg-btn"
-                          >
-                            {m.label}
-                          </button>
-                        ))}
+                  <div className="w-full h-full min-h-0 grid grid-cols-2 gap-1.5 overflow-hidden">
+                    <div className="machined-panel flex flex-col min-h-0 overflow-hidden">
+                      <InstrumentHeader
+                        title="2D Track Map"
+                        right={
+                          <div className="seg-track">
+                            {(
+                              [
+                                { id: "speed", label: "v" },
+                                { id: "delta_t", label: "Δt" },
+                                { id: "ay_g", label: "ay" },
+                              ] as const
+                            ).map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                data-active={mapColorMode === m.id ? "true" : "false"}
+                                onClick={() => setMapColorMode(m.id)}
+                                className="seg-btn"
+                              >
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        }
+                      />
+                      <div className="flex-1 min-h-0 relative bg-[#08090C]">
+                        <canvas
+                          ref={mapCanvasRef}
+                          onMouseMove={handleMapHover}
+                          onMouseLeave={() => setHoverX(null)}
+                          className="block w-full h-full cursor-crosshair"
+                        />
                       </div>
                     </div>
-                    <div className="flex-1 min-h-0 relative">
-                      <canvas
-                        ref={mapCanvasRef}
-                        onMouseMove={handleMapHover}
-                        onMouseLeave={() => setHoverX(null)}
-                        className="block w-full h-full cursor-crosshair"
+
+                    <div className="machined-panel flex flex-col min-h-0 overflow-hidden">
+                      <InstrumentHeader
+                        title="g-g Envelope"
+                        right={
+                          <span className="font-mono text-[9.5px] text-[#7E8899]">
+                            {zoomRange ? "Zoom" : "Full"}
+                          </span>
+                        }
                       />
+                      <div className="flex-1 min-h-0 relative bg-[#08090C]">
+                        <canvas ref={ggCanvasRef} className="block w-full h-full" />
+                      </div>
                     </div>
                   </div>
                 }
                 second={
-                  <div className="machined-panel flex flex-col w-full h-full min-h-0 overflow-hidden">
-                    <div className="panel-header-bar">
-                      <span className="panel-title-label">g-g Traction Envelope</span>
-                      <span className="status-pill status-pill-muted font-mono text-[10px]">
-                        {zoomRange ? "Zoomed Segment" : "Full Lap"}
-                      </span>
+                  rightBottomTab === "sectors" ? (
+                    <SectorDeltaBreakdown
+                      driverTrace={driverTrace}
+                      refTrace={refTrace}
+                      onSelectSectorRange={(sStart, sEnd) => {
+                        setAxisMode("s_m");
+                        setZoomRange([sStart, sEnd]);
+                      }}
+                      headerRight={
+                        <div className="seg-track">
+                          <button
+                            type="button"
+                            data-active="true"
+                            onClick={() => setRightBottomTab("sectors")}
+                            className="seg-btn"
+                          >
+                            Sectors
+                          </button>
+                          <button
+                            type="button"
+                            data-active="false"
+                            onClick={() => setRightBottomTab("notes")}
+                            className="seg-btn"
+                          >
+                            Notes ({sessionNotes.length})
+                          </button>
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div className="machined-panel flex flex-col w-full h-full min-h-0 overflow-hidden">
+                      <InstrumentHeader
+                        title="Distance-Anchored Notes"
+                        right={
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => exportNotes("csv")}
+                              className="h-[20px] px-1.5 rounded-[2px] bg-[#151820] border border-[#222633] text-[9.5px] text-[#94A3B8] hover:text-[#DFBE78] flex items-center gap-1 cursor-pointer"
+                            >
+                              <Download className="w-2.5 h-2.5" />
+                              CSV
+                            </button>
+                            <div className="seg-track">
+                              <button
+                                type="button"
+                                data-active="false"
+                                onClick={() => setRightBottomTab("sectors")}
+                                className="seg-btn"
+                              >
+                                Sectors
+                              </button>
+                              <button
+                                type="button"
+                                data-active="true"
+                                onClick={() => setRightBottomTab("notes")}
+                                className="seg-btn"
+                              >
+                                Notes ({sessionNotes.length})
+                              </button>
+                            </div>
+                          </div>
+                        }
+                      />
+                      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5 bg-[#08090C]">
+                        {sessionNotes.length === 0 ? (
+                          <div className="text-center font-mono text-[10.5px] text-[#64748B] py-6">
+                            No annotations saved for this session. Click &quot;Note&quot; above to anchor one at the active cursor.
+                          </div>
+                        ) : (
+                          sessionNotes.map((n) => (
+                            <div
+                              key={n.id}
+                              className="rounded-[3px] bg-[#141720] border border-[#222633] p-2 text-[10.5px]"
+                            >
+                              <div className="flex items-center justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAxisMode("s_m");
+                                    setZoomRange([Math.max(0, n.distanceM - 12), n.distanceM + 12]);
+                                  }}
+                                  className="font-mono text-[10px] text-[#DFBE78] hover:underline cursor-pointer"
+                                >
+                                  s = {n.distanceM.toFixed(1)} m
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteNote(n.id)}
+                                  className="text-[#64748B] hover:text-[#F87171] cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                              <div className="text-[#ECEFF4] mt-1 leading-snug">{n.text}</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-h-0 relative">
-                      <canvas ref={ggCanvasRef} className="block w-full h-full" />
-                    </div>
-                  </div>
+                  )
                 }
               />
             }

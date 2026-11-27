@@ -38,6 +38,16 @@ export class OfflineTelemetrySynthesizer {
   private socPct = 95.0;
   private sensorProfile: SensorProfileName = "SENSOR_TRACK_REALISM";
   private gripProfile = "FSG_RUBBERED";
+  private stopMode: "NOMINAL" | "SOFT_STOP" | "E_STOP" = "NOMINAL";
+  private stopVxMps = 0;
+  private lastVxMps = 12.0;
+  private injectedFault:
+    | "apps_mismatch"
+    | "bspd_violation"
+    | "can_spike_240ms"
+    | "rr_inv_overtemp"
+    | "fr_rl_swap"
+    | null = null;
 
   // Delay queue to accurately model 125 ms CAN transport latency (~8 frames @ 60 Hz)
   private readonly ekfHistory: Array<{ vx: number; vy: number; wz: number; beta: number }> = [];
@@ -65,20 +75,44 @@ export class OfflineTelemetrySynthesizer {
     this.gripProfile = profile;
   }
 
+  public setStopMode(mode: "NOMINAL" | "SOFT_STOP" | "E_STOP"): void {
+    if (mode !== "NOMINAL" && this.stopMode === "NOMINAL") {
+      this.stopVxMps = Math.max(0, this.lastVxMps);
+    }
+    this.stopMode = mode;
+  }
+
+  public setInjectedFault(
+    fault:
+      | "apps_mismatch"
+      | "bspd_violation"
+      | "can_spike_240ms"
+      | "rr_inv_overtemp"
+      | "fr_rl_swap"
+      | null
+  ): void {
+    this.injectedFault = fault;
+  }
+
   public seekNormalized(norm: number): TelemetryFrame {
     const clamped = Math.max(0, Math.min(1, norm));
     this.simTimeS = clamped * this.durationS;
-    return this.sampleAt(this.simTimeS, this.totalElapsedS);
+    return this.sampleAt(this.simTimeS, this.totalElapsedS, 1 / 60);
   }
 
   public step(dtS: number): TelemetryFrame {
-    this.simTimeS = (this.simTimeS + dtS) % this.durationS;
-    if (this.simTimeS < 0) this.simTimeS += this.durationS;
+    if (this.stopMode === "NOMINAL") {
+      this.simTimeS = (this.simTimeS + dtS) % this.durationS;
+      if (this.simTimeS < 0) this.simTimeS += this.durationS;
+    } else {
+      const decelMs2 = this.stopMode === "E_STOP" ? 13.5 : 6.2;
+      this.stopVxMps = Math.max(0, this.stopVxMps - decelMs2 * Math.abs(dtS));
+    }
     this.totalElapsedS += Math.abs(dtS);
-    return this.sampleAt(this.simTimeS, this.totalElapsedS);
+    return this.sampleAt(this.simTimeS, this.totalElapsedS, Math.abs(dtS));
   }
 
-  private sampleAt(loopT: number, absT: number): TelemetryFrame {
+  private sampleAt(loopT: number, absT: number, _dtS = 1 / 60): TelemetryFrame {
     const trace = this.trace;
     if (trace.length < 2) return this.baseFrame;
 
@@ -97,12 +131,22 @@ export class OfflineTelemetrySynthesizer {
     const u = Math.max(0, Math.min(1, (loopT - s0.t_s) / span));
     const lerp = (a: number, b: number) => a + (b - a) * u;
 
-    const vx = lerp(s0.vx_mps, s1.vx_mps);
-    const axG = lerp(s0.ax_g, s1.ax_g);
-    const ayG = lerp(s0.ay_g, s1.ay_g);
-    const betaDeg = lerp(s0.beta_deg, s1.beta_deg);
+    const rawVx = lerp(s0.vx_mps, s1.vx_mps);
+    const isStopping = this.stopMode !== "NOMINAL";
+    const vx = isStopping ? this.stopVxMps : rawVx;
+    this.lastVxMps = vx;
+
+    const axG = isStopping
+      ? vx > 0.05
+        ? this.stopMode === "E_STOP"
+          ? -1.38
+          : -0.63
+        : 0.0
+      : lerp(s0.ax_g, s1.ax_g);
+    const ayG = isStopping ? lerp(s0.ay_g, s1.ay_g) * Math.min(1, vx / Math.max(1, rawVx)) * 0.25 : lerp(s0.ay_g, s1.ay_g);
+    const betaDeg = isStopping ? lerp(s0.beta_deg, s1.beta_deg) * Math.min(1, vx / 12) * 0.2 : lerp(s0.beta_deg, s1.beta_deg);
     const steerDeg = lerp(s0.steer_deg, s1.steer_deg);
-    const mzTvNm = lerp(s0.mz_tv_nm, s1.mz_tv_nm);
+    const mzTvNm = this.stopMode === "E_STOP" ? 0.0 : isStopping ? 0.0 : lerp(s0.mz_tv_nm, s1.mz_tv_nm);
     const deltaTS = lerp(s0.delta_t_s, s1.delta_t_s);
     const xM = lerp(s0.x_m, s1.x_m);
     const yM = lerp(s0.y_m, s1.y_m);
@@ -192,29 +236,85 @@ export class OfflineTelemetrySynthesizer {
     const rl = makeWheel(fzRL, fzRL + fzRR, fyRearTotal, true, false);
     const rr = makeWheel(fzRR, fzRL + fzRR, fyRearTotal, false, false);
 
+    // Zero all 4 motor torques under HARD E-STOP (SDC OPEN) or APPS cutoff
+    if (this.stopMode === "E_STOP") {
+      fl.motor_torque_nm = 0;
+      fr.motor_torque_nm = 0;
+      rl.motor_torque_nm = 0;
+      rr.motor_torque_nm = 0;
+    } else if (this.stopMode === "SOFT_STOP") {
+      const regenNm = vx > 0.4 ? -8.5 : 0;
+      fl.motor_torque_nm = regenNm;
+      fr.motor_torque_nm = regenNm;
+      rl.motor_torque_nm = regenNm;
+      rr.motor_torque_nm = regenNm;
+    }
+
+    // Simulate FR <-> RL thermistor swap anomaly when injected
+    if (this.injectedFault === "fr_rl_swap") {
+      const tmp = fr.temp_c;
+      fr.temp_c = Number((rl.temp_c - 14.5).toFixed(2));
+      rl.temp_c = Number((tmp + 11.2).toFixed(2));
+    }
+
     // HV Powertrain
     const mechPowerKw = ((fl.fx_n + fr.fx_n + rl.fx_n + rr.fx_n) * vx) / 1000;
-    const pDcKw = mechPowerKw > 0 ? Math.min(80.0, mechPowerKw / 0.89 + 1.8) : 0.4;
-    const pRegenKw = mechPowerKw < 0 ? Math.min(25.0, Math.abs(mechPowerKw) * 0.82) : 0.0;
-    const throttle = axG > -0.05 ? Math.max(0.08, Math.min(1, 0.35 + axG * 0.65)) : 0;
-    const brake = axG < -0.18 ? Math.min(1, Math.abs(axG + 0.18) * 0.72) : 0;
+    let pDcKw =
+      this.stopMode === "E_STOP"
+        ? 0.0
+        : this.stopMode === "SOFT_STOP"
+          ? 0.0
+          : mechPowerKw > 0
+            ? Math.min(80.0, mechPowerKw / 0.89 + 1.8)
+            : 0.4;
+    let pRegenKw =
+      this.stopMode === "E_STOP"
+        ? 0.0
+        : this.stopMode === "SOFT_STOP"
+          ? vx > 0.4
+            ? Math.min(18.0, vx * 1.4)
+            : 0.0
+          : mechPowerKw < 0
+            ? Math.min(25.0, Math.abs(mechPowerKw) * 0.82)
+            : 0.0;
+    let throttle = isStopping ? 0 : axG > -0.05 ? Math.max(0.08, Math.min(1, 0.35 + axG * 0.65)) : 0;
+    let brake =
+      this.stopMode === "E_STOP"
+        ? 1.0
+        : this.stopMode === "SOFT_STOP"
+          ? 0.55
+          : axG < -0.18
+            ? Math.min(1, Math.abs(axG + 0.18) * 0.72)
+            : 0;
+
+    if (this.injectedFault === "bspd_violation" && this.stopMode === "NOMINAL") {
+      brake = 0.62;
+      throttle = 0.72;
+      pDcKw = 18.4;
+      pRegenKw = 0;
+    }
+
     this.socPct = Math.max(12, this.socPct - (pDcKw - pRegenKw) * (1 / 60) * 0.00018);
 
-    // EKF estimator + realistic 125 ms CAN transport delay
+    // EKF estimator + realistic 125 ms CAN transport delay (or 240 ms spike fault)
     this.ekfHistory.push({ vx, vy, wz: yawRate, beta: betaDeg });
-    if (this.ekfHistory.length > 16) this.ekfHistory.shift();
+    if (this.ekfHistory.length > 20) this.ekfHistory.shift();
 
     const isTrackRealism = this.sensorProfile === "SENSOR_TRACK_REALISM";
-    const delayFrames = isTrackRealism ? 8 : 0; // 8 frames @ 60 Hz ≈ 125-133 ms
+    const isCanSpike = this.injectedFault === "can_spike_240ms";
+    const delayFrames = isCanSpike ? 15 : isTrackRealism ? 8 : 0;
     const refIdx = Math.max(0, this.ekfHistory.length - 1 - delayFrames);
     const delayed = this.ekfHistory[refIdx];
     const noise1 = Math.sin(absT * 19.7) * 0.5 + Math.cos(absT * 31.3) * 0.5;
     const noise2 = Math.cos(absT * 23.1) * 0.5 + Math.sin(absT * 41.9) * 0.5;
 
-    const ekfVx = delayed.vx + (isTrackRealism ? noise1 * 0.065 : 0.004 * noise1);
-    const ekfVy = delayed.vy + (isTrackRealism ? noise2 * 0.042 : 0.002 * noise2);
-    const ekfWz = delayed.wz + (isTrackRealism ? noise1 * 0.018 : 0.001 * noise1);
-    const ekfBeta = delayed.beta + (isTrackRealism ? noise2 * 0.24 : 0.012 * noise2);
+    const ekfVx = delayed.vx + (isCanSpike ? noise1 * 0.48 : isTrackRealism ? noise1 * 0.065 : 0.004 * noise1);
+    const ekfVy = delayed.vy + (isCanSpike ? noise2 * 0.35 : isTrackRealism ? noise2 * 0.042 : 0.002 * noise2);
+    const ekfWz = delayed.wz + (isCanSpike ? noise1 * 0.14 : isTrackRealism ? noise1 * 0.018 : 0.001 * noise1);
+    const ekfBeta = delayed.beta + (isCanSpike ? noise2 * 2.85 : isTrackRealism ? noise2 * 0.24 : 0.012 * noise2);
+
+    const bspdActive =
+      this.injectedFault === "bspd_violation" || (throttle > 0.25 && brake > 0.25 && pDcKw > 5.0);
 
     return {
       timestamp_s: Number(absT.toFixed(4)),
@@ -243,7 +343,7 @@ export class OfflineTelemetrySynthesizer {
         p_dc_kw: Number(pDcKw.toFixed(3)),
         p_regen_kw: Number(pRegenKw.toFixed(3)),
         soc_pct: Number(this.socPct.toFixed(3)),
-        bspd_active: throttle > 0.25 && brake > 0.25 && pDcKw > 5.0,
+        bspd_active: bspdActive,
         tv_mz_nm: Number(mzTvNm.toFixed(2)),
       },
       ekf: {
@@ -251,7 +351,7 @@ export class OfflineTelemetrySynthesizer {
         ekf_vy: Number(ekfVy.toFixed(4)),
         ekf_yaw_rate: Number(ekfWz.toFixed(4)),
         ekf_beta_deg: Number(ekfBeta.toFixed(4)),
-        sensor_latency_ms: isTrackRealism ? 125.0 : 0.0,
+        sensor_latency_ms: isCanSpike ? 242.0 : isTrackRealism ? 125.0 : 0.0,
       },
       dil_delta: {
         delta_time_s: Number(deltaTS.toFixed(4)),

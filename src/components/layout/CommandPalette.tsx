@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Terminal } from "lucide-react";
-import { WORKBENCH_ROUTES } from "../../app/routes";
+import { WORKBENCH_PILLARS, WORKBENCH_ROUTES } from "../../app/routes";
 import { useTelemetryStore } from "../../state/telemetryStore";
 import { applySetupPreset } from "../../services/apiClient";
 
@@ -35,6 +35,13 @@ export function CommandPalette() {
     togglePlayPause,
     isPlaying,
     setActiveSetupName,
+    dispatchMirenaEventReset,
+    dispatchMirenaReplaySync,
+    dispatchGhostLap,
+    setActiveFaultMode,
+    triggerSoftStop,
+    triggerEmergencyStop,
+    resetSafetyLatch,
     pushToast,
   } = useTelemetryStore();
 
@@ -51,14 +58,121 @@ export function CommandPalette() {
   }, [commandPaletteOpen]);
 
   const actions = useMemo<PaletteAction[]>(() => {
-    const routeActions: PaletteAction[] = WORKBENCH_ROUTES.map((r, idx) => ({
-      id: `route-${r.id}`,
-      category: "Workspace",
-      label: r.label,
-      detail: r.description,
-      shortcut: `${idx + 1}`,
-      run: () => setActiveRoute(r.id),
-    }));
+    const routeActions: PaletteAction[] = WORKBENCH_ROUTES.map((r) => {
+      const pillar = WORKBENCH_PILLARS.find((p) => p.id === r.pillarId);
+      return {
+        id: `route-${r.id}`,
+        category: `Pillar ${pillar?.roman ?? ""}`,
+        label: r.label,
+        detail: r.description,
+        shortcut: r.shortcut,
+        run: () => setActiveRoute(r.id),
+      };
+    });
+
+    const mirenaActions: PaletteAction[] = [
+      {
+        id: "mirena-reset-skidpad",
+        category: "MirenaSim",
+        label: "Reset Simulator: Skidpad",
+        detail: "Dispatch UDP 9877 event reset to FSG Skidpad figure-8 gate",
+        run: () => dispatchMirenaEventReset("skidpad"),
+      },
+      {
+        id: "mirena-reset-accel",
+        category: "MirenaSim",
+        label: "Reset Simulator: Acceleration 75 m",
+        detail: "Dispatch UDP 9877 event reset to 75 m straight launch gate",
+        run: () => dispatchMirenaEventReset("accel"),
+      },
+      {
+        id: "mirena-reset-autocross",
+        category: "MirenaSim",
+        label: "Reset Simulator: Autocross",
+        detail: "Dispatch UDP 9877 event reset to FSG Autocross start line",
+        run: () => dispatchMirenaEventReset("autocross"),
+      },
+      {
+        id: "mirena-reset-endurance",
+        category: "MirenaSim",
+        label: "Reset Simulator: Endurance 22 km",
+        detail: "Dispatch UDP 9877 event reset to 18-lap Endurance circuit",
+        run: () => dispatchMirenaEventReset("endurance"),
+      },
+      {
+        id: "mirena-replay-sync",
+        category: "MirenaSim",
+        label: "Sync 3D Replay Cursor (replay_seek)",
+        detail: "Frame-lock Godot 3D viewport to active workbench timeline timestamp",
+        run: () => dispatchMirenaReplaySync(),
+      },
+      {
+        id: "mirena-ghost-inject",
+        category: "Real-to-Sim",
+        label: "Inject Verified Skidpad Ghost Lap to MirenaSim",
+        detail: "Send verified trajectory reference packet via UDP 9877",
+        run: () =>
+          dispatchGhostLap(
+            "casadi_optimal_skidpad_fsg_rubbered",
+            "CasADi Skidpad Reference (4.607s)",
+            600
+          ),
+      },
+    ];
+
+    const faultActions: PaletteAction[] = [
+      {
+        id: "safety-soft-stop",
+        category: "Safety E-Stop",
+        label: "Trigger SOFT STOP (Controlled Deceleration)",
+        detail: "Cut tractive discharge to 0 kW and apply smooth regenerative + hydraulic braking",
+        run: () => triggerSoftStop("Command Palette Soft Stop"),
+      },
+      {
+        id: "safety-hard-estop",
+        category: "Safety E-Stop",
+        label: "Trigger HARD E-STOP (SDC OPEN / 0 Nm)",
+        detail: "Open Shutdown Circuit, cut all 4 motors to 0.0 Nm, dispatch HARD_SHUTDOWN via UDP 9877",
+        run: () => triggerEmergencyStop("Command Palette Hard E-Stop"),
+      },
+      {
+        id: "safety-reset-latch",
+        category: "Safety E-Stop",
+        label: "Reset Safety Latch & Re-Close SDC",
+        detail: "Clear active E-Stop / Soft Stop / injected fault and restore nominal 4WD",
+        run: () => resetSafetyLatch(),
+      },
+      {
+        id: "fault-nominal",
+        category: "Safety Bench",
+        label: "Fault Scenario: Nominal 4WD (AL-QP Active)",
+        detail: "Restore all four in-wheel motors and open Safety & E-Stop Supervisor",
+        run: () => {
+          setActiveFaultMode("nominal_4wd");
+          setActiveRoute("ekf_faults");
+        },
+      },
+      {
+        id: "fault-fl-loss",
+        category: "Safety Bench",
+        label: "Inject 3WD Limp-Home: Front-Left Motor Loss",
+        detail: "Disable FL actuator and evaluate compensatory torque reallocation",
+        run: () => {
+          setActiveFaultMode("motor_loss_fl");
+          setActiveRoute("ekf_faults");
+        },
+      },
+      {
+        id: "fault-rr-loss",
+        category: "Safety Bench",
+        label: "Inject 3WD Limp-Home: Rear-Right Motor Loss",
+        detail: "Disable RR actuator and evaluate yaw stability margin",
+        run: () => {
+          setActiveFaultMode("motor_loss_rr");
+          setActiveRoute("ekf_faults");
+        },
+      },
+    ];
 
     const setupActions: PaletteAction[] = PRESET_NAMES.map((preset) => ({
       id: `setup-${preset.id}`,
@@ -117,10 +231,10 @@ export function CommandPalette() {
         category: "Transport",
         label: forceOfflineMode
           ? "Connect Live Backend (localhost:8000)"
-          : "Switch to Offline Mock Playback Engine",
+          : "Switch to Offline Deterministic Engine",
         detail: forceOfflineMode
           ? "Attempt FastAPI REST + WS telemetry handshake"
-          : "Bypass localhost:8000 and run deterministic 60 Hz offline playback",
+          : "Bypass localhost:8000 and run deterministic 60 Hz offline engine",
         run: () => {
           if (forceOfflineMode) {
             retryConnection();
@@ -128,34 +242,34 @@ export function CommandPalette() {
             setForceOfflineMode(true);
             pushToast({
               level: "info",
-              title: "Offline Playback Active",
+              title: "Offline Engine Active",
               detail: "Synthesizing continuous 60 Hz frames from verified mock datasets.",
             });
           }
         },
       },
-      {
-        id: "session-forensics-skidpad",
-        category: "DiL Session",
-        label: "Load Skidpad 14-DOF Godot Parity vs CasADi",
-        detail: "Jump to Session Forensics with verified FSG_RUBBERED comparison",
-        run: () => setActiveRoute("forensics"),
-      },
     ];
 
-    return [...routeActions, ...setupActions, ...systemActions];
+    return [...routeActions, ...mirenaActions, ...faultActions, ...setupActions, ...systemActions];
   }, [
+    dispatchGhostLap,
+    dispatchMirenaEventReset,
+    dispatchMirenaReplaySync,
     forceOfflineMode,
     isPlaying,
     pushToast,
     retryConnection,
     sensorProfile,
+    setActiveFaultMode,
     setActiveRoute,
     setActiveSetupName,
     setForceOfflineMode,
     setGripProfile,
     setSensorProfile,
     togglePlayPause,
+    triggerSoftStop,
+    triggerEmergencyStop,
+    resetSafetyLatch,
   ]);
 
   const filtered = useMemo(() => {
@@ -182,12 +296,12 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] bg-black/72 no-print"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-black/75 no-print"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setCommandPaletteOpen(false);
       }}
     >
-      <div className="w-[620px] max-w-[92vw] bg-[#131720] border border-white/[0.1] rounded-[8px] overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
+      <div className="w-[650px] max-w-[92vw] bg-[#131720] border border-white/[0.1] rounded-[8px] overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-white/[0.07] bg-[#171C27]">
           <Search className="w-4 h-4 text-[#C5A059] shrink-0" />
           <input
@@ -210,7 +324,7 @@ export function CommandPalette() {
                 setCommandPaletteOpen(false);
               }
             }}
-            placeholder="Jump to workspace, apply setup preset, or toggle sensor profile..."
+            placeholder="Jump to any of 12 workspaces, reset MirenaSim event, inject ghost lap, or trigger fault..."
             className="w-full bg-transparent text-[#F1F5F9] text-[13px] outline-none placeholder:text-[#64748B]"
           />
           <kbd className="text-[10px] font-mono text-[#94A3B8] bg-[#0B0D12] border border-white/[0.08] px-1.5 py-0.5 rounded-[4px] shrink-0">
@@ -218,7 +332,7 @@ export function CommandPalette() {
           </kbd>
         </div>
 
-        <div className="max-h-[380px] overflow-y-auto p-1.5 space-y-0.5">
+        <div className="max-h-[410px] overflow-y-auto p-1.5 space-y-0.5">
           {filtered.length === 0 ? (
             <div className="px-4 py-8 text-center text-[12px] text-[#64748B]">
               No matching commands found.
@@ -267,7 +381,7 @@ export function CommandPalette() {
         <div className="flex items-center justify-between px-4 py-2 bg-[#0F1219] border-t border-white/[0.06] text-[11px] text-[#64748B]">
           <span className="flex items-center gap-1.5">
             <Terminal className="w-3.5 h-3.5" />
-            Use arrow keys to navigate, Enter to execute
+            12 Workspaces · MirenaSim UDP 9877 · Fault Injection
           </span>
           <span className="font-mono text-[10px]">TeR27 Command Bus</span>
         </div>

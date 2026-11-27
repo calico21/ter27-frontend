@@ -15,10 +15,14 @@ import type {
 import {
   applySetupPreset,
   ConfirmedHardpointsOverride,
+  dispatchEmergencyStop,
+  dispatchMirenaCommand,
   fetchHealth,
   fetchVehicleOverview,
   saveConfirmedHardpoints,
 } from "../services/apiClient";
+import type { TvFaultMode } from "../services/physics/tvControlModel";
+import type { SignalSafetyOverlay } from "../services/vehicleSignalCatalog";
 import {
   connectTelemetrySocket,
   getOfflineMockTelemetryFrame,
@@ -28,8 +32,8 @@ import {
 import type { WorkbenchRouteId } from "../app/routes";
 
 /**
- * 60-second (3,600-frame @ 60 Hz) zero-GC TypedArray Ring Buffer.
- * Read directly by HTML5 Canvas oscilloscopes and 2x2 friction circles via requestAnimationFrame.
+ * 60-second (3,600-frame @ 60 Hz) zero-GC TypedArray + Frame Ring Buffer.
+ * Read directly by HTML5 Canvas oscilloscopes, 2x2 friction circles, and Pre-Fault Freeze-Frame capture.
  */
 export const RING_CAPACITY = 3600;
 
@@ -37,6 +41,8 @@ export class TelemetryRingBuffer {
   public readonly capacity = RING_CAPACITY;
   public count = 0;
   public writeIdx = 0;
+
+  public readonly frames: Array<TelemetryFrame | null> = new Array(RING_CAPACITY).fill(null);
 
   public readonly t = new Float64Array(RING_CAPACITY);
   public readonly vxKmh = new Float32Array(RING_CAPACITY);
@@ -67,6 +73,7 @@ export class TelemetryRingBuffer {
 
   public push(f: TelemetryFrame): void {
     const i = this.writeIdx;
+    this.frames[i] = f;
     this.t[i] = f.timestamp_s;
     this.vxKmh[i] = f.state.vx * 3.6;
     this.deltaT[i] = f.dil_delta.delta_time_s;
@@ -108,13 +115,49 @@ export class TelemetryRingBuffer {
     return (this.writeIdx + logicalFromOldest) % this.capacity;
   }
 
+  public captureRecentFrames(maxFrames = 120): TelemetryFrame[] {
+    const n = Math.min(this.count, maxFrames);
+    const startLogical = this.count - n;
+    const out: TelemetryFrame[] = [];
+    for (let k = 0; k < n; k++) {
+      const fr = this.frames[this.getPhysicalIndex(startLogical + k)];
+      if (fr) out.push(fr);
+    }
+    return out;
+  }
+
   public clear(): void {
     this.count = 0;
     this.writeIdx = 0;
+    this.frames.fill(null);
   }
 }
 
 export type PlaybackSpeed = 0.25 | 0.5 | 1 | 2;
+export type VehicleStopState = "NOMINAL" | "SOFT_STOP" | "E_STOP";
+
+export type SafetyFaultInjection =
+  | "apps_mismatch"
+  | "bspd_violation"
+  | "can_spike_240ms"
+  | "rr_inv_overtemp"
+  | "fr_rl_swap";
+
+export interface AutoInterlockConfig {
+  ekfBetaSoftStop: boolean; // Auto Soft Stop if |beta - ekf_beta| > 2.5 deg for 200 ms
+  hvPowerOrCellEstop: boolean; // Auto E-Stop if HV power > 80.5 kW or Cell Temp > 60 C
+  inverterOvertempLimp3wd: boolean; // Auto-derate to 3WD Limp-Home on inverter overtemp
+  appsBspdHardCutoff: boolean; // Auto E-Stop on APPS T.4.2.5 or BSPD EV 2.3 trip
+}
+
+export interface SafetyEventLog {
+  id: number;
+  timestampMs: string;
+  severity: "NOMINAL" | "CAUTION" | "TRIP";
+  source: string;
+  message: string;
+  action: string;
+}
 
 export interface WorkbenchToast {
   id: number;
@@ -131,11 +174,9 @@ export interface GlobalCursorState {
 }
 
 interface TelemetryStoreValue {
-  // High-frequency refs (read at 60 fps inside Canvas / R3F without re-rendering React)
   ringBufferRef: React.MutableRefObject<TelemetryRingBuffer>;
   latestFrameRef: React.MutableRefObject<TelemetryFrame>;
 
-  // Throttled React state (~15-20 Hz) for crisp tabular numeric readouts
   frame: TelemetryFrame;
   connectionStatus: TelemetryConnectionStatus;
   backendLive: boolean;
@@ -144,18 +185,16 @@ interface TelemetryStoreValue {
   setForceOfflineMode: (offline: boolean) => void;
   retryConnection: () => void;
 
-  // Offline 60 Hz playback transport
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   togglePlayPause: () => void;
   playbackSpeed: PlaybackSpeed;
   setPlaybackSpeed: (speed: PlaybackSpeed) => void;
-  playbackProgress: number; // [0..1]
+  playbackProgress: number;
   playbackDurationS: number;
   seekPlayback: (norm: number) => void;
   stepPlaybackFrame: (deltaFrames: number) => void;
 
-  // Vehicle & configuration state
   vehicleOverview: VehicleOverviewResponse | null;
   refreshVehicleOverview: () => Promise<void>;
   importConfirmedHardpoints: (override: ConfirmedHardpointsOverride | null) => Promise<void>;
@@ -166,11 +205,32 @@ interface TelemetryStoreValue {
   activeSetupName: string;
   setActiveSetupName: (name: string) => void;
 
-  // Global synchronized cursor across plots, 2D map, and 3D Digital Twin
+  activeSimEvent: "skidpad" | "accel" | "autocross" | "endurance";
+  dispatchMirenaEventReset: (event: "skidpad" | "accel" | "autocross" | "endurance") => Promise<void>;
+  dispatchMirenaReplaySync: (timeS?: number) => Promise<void>;
+  dispatchGhostLap: (sessionId: string, label: string, sampleCount: number) => Promise<void>;
+  activeFaultMode: TvFaultMode;
+  setActiveFaultMode: (mode: TvFaultMode) => void;
+
+  // Global Safety Supervisor & Emergency Stop System
+  stopState: VehicleStopState;
+  sdcClosed: boolean;
+  stopReason: string | null;
+  triggerSoftStop: (reason?: string) => Promise<void>;
+  triggerEmergencyStop: (reason?: string) => Promise<void>;
+  resetSafetyLatch: () => Promise<void>;
+  injectedSafetyFault: SafetyFaultInjection | null;
+  injectSafetyFault: (fault: SafetyFaultInjection | null) => void;
+  autoInterlocks: AutoInterlockConfig;
+  setAutoInterlocks: React.Dispatch<React.SetStateAction<AutoInterlockConfig>>;
+  safetyEvents: SafetyEventLog[];
+  clearSafetyEvents: () => void;
+  preFaultFreezeFrame: TelemetryFrame[];
+  safetyOverlay: SignalSafetyOverlay;
+
   cursor: GlobalCursorState;
   setCursor: React.Dispatch<React.SetStateAction<GlobalCursorState>>;
 
-  // Navigation & Global UX (Command Palette + Toasts)
   activeRoute: WorkbenchRouteId;
   setActiveRoute: (route: WorkbenchRouteId) => void;
   commandPaletteOpen: boolean;
@@ -181,6 +241,15 @@ interface TelemetryStoreValue {
 }
 
 const TelemetryContext = createContext<TelemetryStoreValue | null>(null);
+
+function formatClockMs(): string {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
 
 export function TelemetryProvider({ children }: { children: React.ReactNode }) {
   const ringBufferRef = useRef<TelemetryRingBuffer>(new TelemetryRingBuffer());
@@ -203,6 +272,30 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
   const [sensorProfile, setSensorProfileState] = useState<SensorProfileName>("SENSOR_TRACK_REALISM");
   const [gripProfile, setGripProfileState] = useState<string>("FSG_RUBBERED");
   const [activeSetupName, setActiveSetupName] = useState<string>("default");
+  const [activeSimEvent, setActiveSimEvent] = useState<"skidpad" | "accel" | "autocross" | "endurance">("skidpad");
+  const [activeFaultMode, setActiveFaultModeState] = useState<TvFaultMode>("nominal_4wd");
+
+  // Safety Supervisor State
+  const [stopState, setStopState] = useState<VehicleStopState>("NOMINAL");
+  const [stopReason, setStopReason] = useState<string | null>(null);
+  const [injectedSafetyFault, setInjectedSafetyFaultState] = useState<SafetyFaultInjection | null>(null);
+  const [autoInterlocks, setAutoInterlocks] = useState<AutoInterlockConfig>({
+    ekfBetaSoftStop: true,
+    hvPowerOrCellEstop: true,
+    inverterOvertempLimp3wd: true,
+    appsBspdHardCutoff: true,
+  });
+  const [safetyEvents, setSafetyEvents] = useState<SafetyEventLog[]>([
+    {
+      id: 1,
+      timestampMs: formatClockMs(),
+      severity: "NOMINAL",
+      source: "SUPERVISOR_INIT",
+      message: "Shutdown Circuit (SDC) closed; 200 Hz STM32F405 watchdog armed.",
+      action: "NOMINAL_READY",
+    },
+  ]);
+  const [preFaultFreezeFrame, setPreFaultFreezeFrame] = useState<TelemetryFrame[]>([]);
 
   const [cursor, setCursor] = useState<GlobalCursorState>({
     cursorDistanceM: 0,
@@ -237,6 +330,27 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const appendSafetyEvent = useCallback(
+    (severity: SafetyEventLog["severity"], source: string, message: string, action: string) => {
+      setSafetyEvents((prev) => [
+        {
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          timestampMs: formatClockMs(),
+          severity,
+          source,
+          message,
+          action,
+        },
+        ...prev.slice(0, 39),
+      ]);
+    },
+    []
+  );
+
+  const clearSafetyEvents = useCallback(() => {
+    setSafetyEvents([]);
+  }, []);
+
   const refreshVehicleOverview = useCallback(async () => {
     const [healthRes, overviewRes] = await Promise.all([
       fetchHealth(forceOfflineMode),
@@ -251,7 +365,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     refreshVehicleOverview();
   }, [refreshVehicleOverview, reconnectToken]);
 
-  // Seed initial 120 frames (2 seconds) into ring buffer so live oscilloscopes have immediate history
+  // Seed initial 180 frames (3 seconds) into ring buffer
   useEffect(() => {
     if (ringBufferRef.current.count === 0) {
       const synth = synthRef.current;
@@ -265,7 +379,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Live WebSocket connection (disabled when forceOfflineMode is true)
+  // Live WebSocket connection
   useEffect(() => {
     if (forceOfflineMode) {
       setConnectionStatus("offline_mock");
@@ -290,7 +404,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     return disconnect;
   }, [forceOfflineMode, reconnectToken]);
 
-  // 60 Hz Offline Playback Engine + 18 Hz throttled React DOM state publisher
+  // 60 Hz Offline Playback Engine + ~18 Hz React DOM publish
   useEffect(() => {
     let rafId = 0;
     let lastPerf = performance.now();
@@ -331,6 +445,162 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
   }, []);
+
+  const triggerSoftStop = useCallback(
+    async (reason = "Manual Pitwall Soft Stop") => {
+      setStopState("SOFT_STOP");
+      setStopReason(reason);
+      synthRef.current.setStopMode("SOFT_STOP");
+      setPreFaultFreezeFrame(ringBufferRef.current.captureRecentFrames(120));
+      appendSafetyEvent(
+        "CAUTION",
+        "SOFT_STOP",
+        `${reason} — Controlled regenerative + hydraulic deceleration engaged.`,
+        "CMD_SOFT_STOP"
+      );
+      const res = await dispatchEmergencyStop("SOFT_STOP", reason, forceOfflineMode);
+      pushToast({
+        level: "caution",
+        title: "SOFT STOP ENGAGED",
+        detail: res.live
+          ? `Dispatched controlled pit deceleration to MirenaSim UDP ${res.data.target_port}.`
+          : "Controlled deceleration active in offline physics engine (0 kW tractive).",
+      });
+    },
+    [appendSafetyEvent, forceOfflineMode, pushToast]
+  );
+
+  const triggerEmergencyStop = useCallback(
+    async (reason = "Manual Engineer Hard E-Stop") => {
+      setStopState("E_STOP");
+      setStopReason(reason);
+      synthRef.current.setStopMode("E_STOP");
+      setPreFaultFreezeFrame(ringBufferRef.current.captureRecentFrames(120));
+      appendSafetyEvent(
+        "TRIP",
+        "E_STOP_SDC",
+        `${reason} — SDC OPENED, 4WD motor torques zeroed (0.0 Nm), max emergency brake latched.`,
+        "HARD_SHUTDOWN"
+      );
+      const res = await dispatchEmergencyStop("HARD_SHUTDOWN", reason, forceOfflineMode);
+      pushToast({
+        level: "limit",
+        title: "E-STOP TRIPPED — SDC OPEN",
+        detail: res.live
+          ? `HARD_SHUTDOWN sent via UDP ${res.data.target_port}. Explicit reset required.`
+          : "All 4 motors cut to 0.0 Nm; braking to 0.0 km/h. Explicit reset required.",
+      });
+    },
+    [appendSafetyEvent, forceOfflineMode, pushToast]
+  );
+
+  const resetSafetyLatch = useCallback(async () => {
+    setStopState("NOMINAL");
+    setStopReason(null);
+    setInjectedSafetyFaultState(null);
+    synthRef.current.setInjectedFault(null);
+    synthRef.current.setStopMode("NOMINAL");
+    setActiveFaultModeState("nominal_4wd");
+    appendSafetyEvent(
+      "NOMINAL",
+      "LATCH_RESET",
+      "Engineer verified scrutineering interlocks; Shutdown Circuit (SDC) re-closed.",
+      "RESUME_NOMINAL"
+    );
+    await dispatchEmergencyStop("RESET", "Engineer explicit safety latch reset", forceOfflineMode);
+    pushToast({
+      level: "nominal",
+      title: "Safety Latch Reset — SDC Closed",
+      detail: "All interlocks cleared and nominal 4WD operation restored.",
+    });
+  }, [appendSafetyEvent, forceOfflineMode, pushToast]);
+
+  const injectSafetyFault = useCallback(
+    (fault: SafetyFaultInjection | null) => {
+      setInjectedSafetyFaultState(fault);
+      synthRef.current.setInjectedFault(fault);
+      if (!fault) {
+        appendSafetyEvent(
+          "NOMINAL",
+          "FAULT_CLEAR",
+          "Cleared injected safety fault scenario.",
+          "NOMINAL"
+        );
+        return;
+      }
+
+      // Capture 2.0 s pre-fault freeze-frame immediately
+      setPreFaultFreezeFrame(ringBufferRef.current.captureRecentFrames(120));
+
+      if (fault === "apps_mismatch") {
+        appendSafetyEvent(
+          "TRIP",
+          "APPS_T4.2.5",
+          "Injected APPS1/APPS2 dual-channel mismatch (16.4% > 10% for >100 ms).",
+          autoInterlocks.appsBspdHardCutoff ? "AUTO_E_STOP" : "ALARM_ONLY"
+        );
+        if (autoInterlocks.appsBspdHardCutoff) {
+          void triggerEmergencyStop("Auto-Trip: APPS T.4.2.5 Dual-Channel Mismatch > 10%");
+        }
+      } else if (fault === "bspd_violation") {
+        appendSafetyEvent(
+          "TRIP",
+          "BSPD_EV2.3",
+          "Injected simultaneous brake pressure (62%) + HV power (18.4 kW > 5.0 kW).",
+          autoInterlocks.appsBspdHardCutoff ? "AUTO_E_STOP" : "ALARM_ONLY"
+        );
+        if (autoInterlocks.appsBspdHardCutoff) {
+          void triggerEmergencyStop("Auto-Trip: BSPD EV 2.3 Brake + >5 kW Plausibility Violation");
+        }
+      } else if (fault === "can_spike_240ms") {
+        appendSafetyEvent(
+          "CAUTION",
+          "CAN_WATCHDOG",
+          "Injected CAN transport latency spike (242 ms > 200 ms) & EKF |Δβ| divergence.",
+          autoInterlocks.ekfBetaSoftStop ? "AUTO_SOFT_STOP" : "ALARM_ONLY"
+        );
+        if (autoInterlocks.ekfBetaSoftStop) {
+          void triggerSoftStop("Auto-Soft-Stop: CAN Timeout 242 ms / EKF β Error > 2.5 deg");
+        }
+      } else if (fault === "rr_inv_overtemp") {
+        appendSafetyEvent(
+          "CAUTION",
+          "INV_THERMAL",
+          "Injected Rear-Right Inverter IGBT overtemperature (88.4 °C > 78 °C derate gate).",
+          autoInterlocks.inverterOvertempLimp3wd ? "DERATE_3WD_LIMP" : "ALARM_ONLY"
+        );
+        if (autoInterlocks.inverterOvertempLimp3wd) {
+          setActiveFaultModeState("motor_loss_rr");
+          pushToast({
+            level: "caution",
+            title: "3WD Limp-Home Engaged (RR Cut)",
+            detail: "RR inverter overtemp detected; AL-QP reallocated yaw authority to FL/FR/RL.",
+          });
+        }
+      } else if (fault === "fr_rl_swap") {
+        appendSafetyEvent(
+          "CAUTION",
+          "SENSOR_AUDIT",
+          "Injected FR <-> RL thermistor & wheel-speed cross-channel swap anomaly.",
+          "DIAGNOSTIC_FLAG"
+        );
+        pushToast({
+          level: "caution",
+          title: "FR <-> RL Sensor Swap Flagged",
+          detail: "Cross-check detected wheel thermal/speed asymmetry between FR and RL.",
+        });
+      }
+    },
+    [
+      appendSafetyEvent,
+      autoInterlocks.appsBspdHardCutoff,
+      autoInterlocks.ekfBetaSoftStop,
+      autoInterlocks.inverterOvertempLimp3wd,
+      pushToast,
+      triggerEmergencyStop,
+      triggerSoftStop,
+    ]
+  );
 
   const retryConnection = useCallback(() => {
     setForceOfflineMode(false);
@@ -391,6 +661,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     (profile: string) => {
       setGripProfileState(profile);
       synthRef.current.setGripProfile(profile);
+      void dispatchMirenaCommand("set_grip_profile", { grip_profile: profile }, forceOfflineMode);
       pushToast({
         level: "info",
         title: `Grip Profile: ${profile}`,
@@ -400,7 +671,67 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
             : "lambda_muy = 0.57 (FSG rubbered competition asphalt)",
       });
     },
-    [pushToast]
+    [forceOfflineMode, pushToast]
+  );
+
+  const dispatchMirenaEventReset = useCallback(
+    async (event: "skidpad" | "accel" | "autocross" | "endurance") => {
+      setActiveSimEvent(event);
+      const res = await dispatchMirenaCommand("reset_event", { event }, forceOfflineMode);
+      pushToast({
+        level: res.live ? "nominal" : "info",
+        title: `MirenaSim Event Reset: ${event.toUpperCase()}`,
+        detail: res.live
+          ? `Sent event reset command to Godot UDP ${res.data.target_port}.`
+          : `Staged ${event.toUpperCase()} event locally (start FastAPI on :8000 for live UDP 9877).`,
+      });
+    },
+    [forceOfflineMode, pushToast]
+  );
+
+  const dispatchMirenaReplaySync = useCallback(
+    async (timeS?: number) => {
+      const targetS = timeS ?? synthRef.current.getCurrentLoopTimeS();
+      const res = await dispatchMirenaCommand(
+        "replay_seek",
+        { timestamp_s: Number(targetS.toFixed(3)) },
+        forceOfflineMode
+      );
+      pushToast({
+        level: res.live ? "nominal" : "info",
+        title: `Replay Sync @ ${targetS.toFixed(2)} s`,
+        detail: res.live
+          ? `Frame-locked MirenaSim 3D viewport via UDP ${res.data.target_port}.`
+          : "Timeline cursor synchronized locally (offline playback engine).",
+      });
+    },
+    [forceOfflineMode, pushToast]
+  );
+
+  const dispatchGhostLap = useCallback(
+    async (sessionId: string, label: string, sampleCount: number) => {
+      const res = await dispatchMirenaCommand(
+        "inject_ghost",
+        { session_id: sessionId, label, n_samples: sampleCount },
+        forceOfflineMode
+      );
+      pushToast({
+        level: res.live ? "nominal" : "info",
+        title: `Ghost Reference Dispatched: ${label}`,
+        detail: res.live
+          ? `Injected ${sampleCount} trajectory points to MirenaSim UDP ${res.data.target_port}.`
+          : `Validated ${sampleCount}-sample JSON ghost packet locally for MirenaSim injection.`,
+      });
+    },
+    [forceOfflineMode, pushToast]
+  );
+
+  const setActiveFaultMode = useCallback(
+    (mode: TvFaultMode) => {
+      setActiveFaultModeState(mode);
+      void dispatchMirenaCommand("set_fault_mode", { fault_mode: mode }, forceOfflineMode);
+    },
+    [forceOfflineMode]
   );
 
   const importConfirmedHardpoints = useCallback(
@@ -417,6 +748,25 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     },
     [pushToast, refreshVehicleOverview]
   );
+
+  // Derived real-time safety overlay used by both Universal Oscilloscope and Safety Supervisor
+  const safetyOverlay = useMemo<SignalSafetyOverlay>(() => {
+    const ocv = 144 * (3.48 + 0.64 * Math.pow(Math.max(0.05, frame.hv.soc_pct / 100), 0.72));
+    const netW = (frame.hv.p_dc_kw - frame.hv.p_regen_kw) * 1000;
+    const currentA = netW / Math.max(400, ocv);
+    const packVoltageV = Math.max(400, ocv - currentA * 0.145);
+    return {
+      appsDiffPct: injectedSafetyFault === "apps_mismatch" ? 16.4 : 0.6 + Math.abs(frame.state.throttle) * 0.8,
+      inverterTempC: injectedSafetyFault === "rr_inv_overtemp" ? 88.4 : 52 + frame.hv.p_dc_kw * 0.24,
+      motorStatorTempC: injectedSafetyFault === "rr_inv_overtemp" ? 118.2 : 74 + frame.hv.p_dc_kw * 0.34,
+      maxCellTempC: 39.2 + (100 - frame.hv.soc_pct) * 0.22,
+      minCellVoltageV: packVoltageV / 144 - 0.035,
+      packVoltageV,
+      frRlSwapActive: injectedSafetyFault === "fr_rl_swap",
+    };
+  }, [frame, injectedSafetyFault]);
+
+  const sdcClosed = stopState !== "E_STOP";
 
   const value = useMemo<TelemetryStoreValue>(
     () => ({
@@ -447,6 +797,26 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       setGripProfile,
       activeSetupName,
       setActiveSetupName,
+      activeSimEvent,
+      dispatchMirenaEventReset,
+      dispatchMirenaReplaySync,
+      dispatchGhostLap,
+      activeFaultMode,
+      setActiveFaultMode,
+      stopState,
+      sdcClosed,
+      stopReason,
+      triggerSoftStop,
+      triggerEmergencyStop,
+      resetSafetyLatch,
+      injectedSafetyFault,
+      injectSafetyFault,
+      autoInterlocks,
+      setAutoInterlocks,
+      safetyEvents,
+      clearSafetyEvents,
+      preFaultFreezeFrame,
+      safetyOverlay,
       cursor,
       setCursor,
       activeRoute,
@@ -478,6 +848,25 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       gripProfile,
       setGripProfile,
       activeSetupName,
+      activeSimEvent,
+      dispatchMirenaEventReset,
+      dispatchMirenaReplaySync,
+      dispatchGhostLap,
+      activeFaultMode,
+      setActiveFaultMode,
+      stopState,
+      sdcClosed,
+      stopReason,
+      triggerSoftStop,
+      triggerEmergencyStop,
+      resetSafetyLatch,
+      injectedSafetyFault,
+      injectSafetyFault,
+      autoInterlocks,
+      safetyEvents,
+      clearSafetyEvents,
+      preFaultFreezeFrame,
+      safetyOverlay,
       cursor,
       activeRoute,
       commandPaletteOpen,

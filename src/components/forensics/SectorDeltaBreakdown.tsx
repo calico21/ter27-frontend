@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { TrajectorySample } from "../../types";
+import { InstrumentHeader } from "../shared/PrecisionControl";
 
 export interface SectorMetricRow {
   id: number;
@@ -19,6 +20,7 @@ interface SectorDeltaBreakdownProps {
   driverTrace: TrajectorySample[];
   refTrace: TrajectorySample[];
   onSelectSectorRange: (sStart: number, sEnd: number) => void;
+  headerRight?: React.ReactNode;
 }
 
 type SortKey = "id" | "phase" | "apexSpeedDeltaKmh" | "peakAyG" | "deltaTimeS";
@@ -71,7 +73,7 @@ export function computeSectorBreakdown(
 
     rows.push({
       id: i + 1,
-      name: `S${i + 1} (${sStart.toFixed(0)}–${sEnd.toFixed(0)} m)`,
+      name: `S${i + 1} (${sStart.toFixed(0)}–${sEnd.toFixed(0)}m)`,
       phase,
       sStartM: sStart,
       sEndM: sEnd,
@@ -88,7 +90,7 @@ export function computeSectorBreakdown(
 function phaseBadgeClass(phase: SectorMetricRow["phase"]): string {
   switch (phase) {
     case "Braking":
-      return "bg-[#EF4444]/12 text-[#F87171]";
+      return "bg-[#DC2626]/14 text-[#F87171]";
     case "Entry":
       return "bg-[#38BDF8]/12 text-[#38BDF8]";
     case "Exit":
@@ -102,6 +104,7 @@ export function SectorDeltaBreakdown({
   driverTrace,
   refTrace,
   onSelectSectorRange,
+  headerRight,
 }: SectorDeltaBreakdownProps) {
   const [sortKey, setSortKey] = useState<SortKey>("id");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
@@ -135,108 +138,96 @@ export function SectorDeltaBreakdown({
   const renderSortIcon = (key: SortKey) => {
     if (sortKey !== key) return null;
     return sortAsc ? (
-      <ArrowUp className="w-3 h-3 inline ml-1 text-[#DFBE78]" />
+      <ArrowUp className="w-2.5 h-2.5 inline ml-0.5 text-[#DFBE78]" />
     ) : (
-      <ArrowDown className="w-3 h-3 inline ml-1 text-[#DFBE78]" />
+      <ArrowDown className="w-2.5 h-2.5 inline ml-0.5 text-[#DFBE78]" />
     );
   };
 
   return (
     <div className="machined-panel flex flex-col w-full h-full min-h-0 overflow-hidden">
-      <div className="panel-header-bar">
-        <div className="flex items-center gap-2">
-          <span className="panel-title-label">Sector &amp; Corner Phase Breakdown</span>
-          <span className="panel-subtitle">Click any row to isolate segment</span>
-        </div>
-        <span className="status-pill status-pill-muted font-mono text-[10px]">
-          {rows.length} Sectors
-        </span>
-      </div>
+      <InstrumentHeader
+        title="Sector & Phase Delta"
+        subtitle={`${rows.length} segments`}
+        right={headerRight}
+      />
 
-      <div className="flex-1 min-h-0 overflow-auto">
-        <table className="w-full border-collapse text-[11.5px]">
-          <thead className="sticky top-0 bg-[#141822] text-[#94A3B8] border-b border-white/[0.06] z-10">
+      <div className="flex-1 min-h-0 overflow-auto bg-[#08090C]">
+        <table className="w-full border-collapse text-[10.5px]">
+          <thead className="sticky top-0 bg-[#12151D] text-[#7E8899] border-b border-[#222633] z-10">
             <tr>
               <th
                 onClick={() => onHeaderClick("id")}
-                className="text-left px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
+                className="text-left px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
               >
                 Sector{renderSortIcon("id")}
               </th>
               <th
                 onClick={() => onHeaderClick("phase")}
-                className="text-left px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
+                className="text-left px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
               >
                 Phase{renderSortIcon("phase")}
               </th>
-              <th className="text-right px-3 py-2 font-medium">Apex A (km/h)</th>
-              <th className="text-right px-3 py-2 font-medium">Apex B (km/h)</th>
               <th
                 onClick={() => onHeaderClick("apexSpeedDeltaKmh")}
-                className="text-right px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
+                className="text-right px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
               >
                 ΔV Apex{renderSortIcon("apexSpeedDeltaKmh")}
               </th>
               <th
                 onClick={() => onHeaderClick("peakAyG")}
-                className="text-right px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
+                className="text-right px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
               >
-                Peak |ay|{renderSortIcon("peakAyG")}
+                |ay|{renderSortIcon("peakAyG")}
               </th>
               <th
                 onClick={() => onHeaderClick("deltaTimeS")}
-                className="text-right px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
+                className="text-right px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
               >
-                Sector Δt{renderSortIcon("deltaTimeS")}
+                Δt{renderSortIcon("deltaTimeS")}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/[0.045]">
+          <tbody className="divide-y divide-[#181C26]">
             {sorted.map((row) => {
               const faster = row.deltaTimeS <= 0;
               return (
                 <tr
                   key={row.id}
                   onClick={() => onSelectSectorRange(row.sStartM, row.sEndM)}
-                  className="hover:bg-[#1A202C] cursor-pointer transition-colors"
+                  className="hover:bg-[#141822] cursor-pointer transition-colors"
                 >
-                  <td className="px-3 py-2 font-mono text-[11px] text-[#F1F5F9] font-medium">
+                  <td className="px-2 py-1.5 font-mono text-[#ECEFF4] font-medium whitespace-nowrap">
                     {row.name}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${phaseBadgeClass(
+                      className={`inline-flex items-center px-1.5 py-[1px] rounded-[2px] text-[9.5px] font-medium ${phaseBadgeClass(
                         row.phase
                       )}`}
                     >
                       {row.phase}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-[11px] text-[#F1F5F9] tabular">
-                    {row.apexSpeedADriverKmh.toFixed(1)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-[11px] text-[#38BDF8] tabular">
-                    {row.apexSpeedBRefKmh.toFixed(1)}
-                  </td>
                   <td
-                    className={`px-3 py-2 text-right font-mono text-[11px] tabular ${
+                    className={`px-2 py-1.5 text-right font-mono tabular ${
                       row.apexSpeedDeltaKmh >= 0 ? "text-[#34D399]" : "text-[#FBBF24]"
                     }`}
                   >
                     {row.apexSpeedDeltaKmh >= 0 ? "+" : ""}
-                    {row.apexSpeedDeltaKmh.toFixed(2)}
+                    {row.apexSpeedDeltaKmh.toFixed(1)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-[11px] text-[#DFBE78] tabular">
-                    {row.peakAyG.toFixed(2)} g
+                  <td className="px-2 py-1.5 text-right font-mono text-[#DFBE78] tabular">
+                    {row.peakAyG.toFixed(2)}g
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     <span
-                      className={`status-pill font-mono text-[10.5px] tabular ${
+                      className={`status-pill !text-[9.5px] !px-1.5 !py-0 font-mono tabular ${
                         faster ? "status-pill-nominal" : "status-pill-limit"
                       }`}
                     >
                       {row.deltaTimeS >= 0 ? "+" : ""}
-                      {row.deltaTimeS.toFixed(3)} s
+                      {row.deltaTimeS.toFixed(3)}s
                     </span>
                   </td>
                 </tr>

@@ -1,14 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Printer, Send, SlidersHorizontal } from "lucide-react";
-import type {
-  SetupsMatrixResponse,
-  SetupValues,
-  TireCompoundName,
-} from "../../types";
+import { Printer, RotateCcw, Send } from "lucide-react";
+import type { SetupsMatrixResponse, SetupValues } from "../../types";
 import { applySetupPreset, fetchSetupsMatrix } from "../../services/apiClient";
 import { useTelemetryStore } from "../../state/telemetryStore";
 import { SplitPane } from "../layout/SplitPane";
-import { SimulationLauncher } from "./SimulationLauncher";
+import { InstrumentHeader, PrecisionControl } from "../shared/PrecisionControl";
 
 interface ParamRowSpec {
   key: keyof SetupValues;
@@ -17,26 +13,30 @@ interface ParamRowSpec {
   label: string;
   unit: string;
   decimals: number;
-  editable?: boolean;
+  min?: number;
+  max?: number;
   step?: number;
+  editable?: boolean;
 }
 
 const PARAM_ROWS: ParamRowSpec[] = [
-  { key: "lltd", deltaKey: "lltd", boundKey: "lltd", label: "LLTD Front", unit: "ratio", decimals: 4, editable: true, step: 0.005 },
-  { key: "camber_front_deg", deltaKey: "camber_front_deg", boundKey: "camber_f_deg", label: "Camber Front", unit: "deg", decimals: 3, editable: true, step: 0.05 },
-  { key: "camber_rear_deg", deltaKey: "camber_rear_deg", boundKey: "camber_r_deg", label: "Camber Rear", unit: "deg", decimals: 3, editable: true, step: 0.05 },
-  { key: "toe_front_deg", deltaKey: "toe_front_deg", boundKey: "toe_f_deg", label: "Toe Front", unit: "deg", decimals: 3, editable: true, step: 0.05 },
-  { key: "toe_rear_deg", deltaKey: "toe_rear_deg", boundKey: "toe_r_deg", label: "Toe Rear", unit: "deg", decimals: 3, editable: true, step: 0.05 },
-  { key: "brake_bias", deltaKey: "brake_bias", boundKey: "brake_bias", label: "Brake Bias Front", unit: "ratio", decimals: 4, editable: true, step: 0.01 },
-  { key: "rake_mm", deltaKey: "rake_mm", boundKey: "rake_mm", label: "Aero Rake", unit: "mm", decimals: 2, editable: true, step: 0.25 },
+  { key: "lltd", deltaKey: "lltd", boundKey: "lltd", label: "LLTD Front", unit: "ratio", decimals: 3, min: 0.36, max: 0.58, step: 0.005, editable: true },
+  { key: "camber_front_deg", deltaKey: "camber_front_deg", boundKey: "camber_f_deg", label: "Camber Front", unit: "deg", decimals: 2, min: -4.5, max: 0.0, step: 0.05, editable: true },
+  { key: "camber_rear_deg", deltaKey: "camber_rear_deg", boundKey: "camber_r_deg", label: "Camber Rear", unit: "deg", decimals: 2, min: -4.0, max: 0.0, step: 0.05, editable: true },
+  { key: "toe_front_deg", deltaKey: "toe_front_deg", boundKey: "toe_f_deg", label: "Toe Front", unit: "deg", decimals: 2, min: -1.5, max: 1.5, step: 0.05, editable: true },
+  { key: "toe_rear_deg", deltaKey: "toe_rear_deg", boundKey: "toe_r_deg", label: "Toe Rear", unit: "deg", decimals: 2, min: -1.5, max: 1.5, step: 0.05, editable: true },
+  { key: "brake_bias", deltaKey: "brake_bias", boundKey: "brake_bias", label: "Brake Bias F", unit: "ratio", decimals: 3, min: 0.50, max: 0.72, step: 0.005, editable: true },
+  { key: "rake_mm", deltaKey: "rake_mm", boundKey: "rake_mm", label: "Aero Rake", unit: "mm", decimals: 2, min: -6.0, max: 8.0, step: 0.25, editable: true },
+  { key: "power_limit_kw", deltaKey: "power_limit_kw", label: "HV Power Lim", unit: "kW", decimals: 1, min: 40, max: 80, step: 1, editable: true },
   { key: "spring_rate_front_n_m", deltaKey: "spring_rate_front_n_m", label: "Spring Rate F", unit: "N/m", decimals: 0 },
   { key: "spring_rate_rear_n_m", deltaKey: "spring_rate_rear_n_m", label: "Spring Rate R", unit: "N/m", decimals: 0 },
   { key: "arb_front_nm_rad", deltaKey: "arb_front_nm_rad", label: "ARB Front", unit: "Nm/rad", decimals: 1 },
   { key: "arb_rear_nm_rad", deltaKey: "arb_rear_nm_rad", label: "ARB Rear", unit: "Nm/rad", decimals: 1 },
-  { key: "power_limit_kw", deltaKey: "power_limit_kw", label: "HV Power Limit", unit: "kW", decimals: 1 },
   { key: "tire_pressure_front_bar", label: "Pressure Front", unit: "bar", decimals: 2 },
   { key: "tire_pressure_rear_bar", label: "Pressure Rear", unit: "bar", decimals: 2 },
 ];
+
+const SANDBOX_ROWS = PARAM_ROWS.filter((r) => r.editable);
 
 export function TracksideSetupMatrix() {
   const {
@@ -50,13 +50,13 @@ export function TracksideSetupMatrix() {
   const [matrix, setMatrix] = useState<SetupsMatrixResponse | null>(null);
   const [selectedName, setSelectedName] = useState<string>("optimal_autocross");
   const [customDraft, setCustomDraft] = useState<SetupValues | null>(null);
-  const [editMode, setEditMode] = useState<boolean>(false);
+  const [isCustomModified, setIsCustomModified] = useState<boolean>(false);
   const [dispatching, setDispatching] = useState<boolean>(false);
 
-  const [deltaMassKg, setDeltaMassKg] = useState<number>(0);
-  const [deltaClAPct, setDeltaClAPct] = useState<number>(0);
-  const [energyBudgetKwh, setEnergyBudgetKwh] = useState<number>(3.12);
-  const [simCompound, setSimCompound] = useState<TireCompoundName>("R25B");
+  const [coldAmbTempC, setColdAmbTempC] = useState<number>(22);
+  const [targetHotTempC, setTargetHotTempC] = useState<number>(75);
+  const [targetHotBarF, setTargetHotBarF] = useState<number>(0.83);
+  const [targetHotBarR, setTargetHotBarR] = useState<number>(0.83);
 
   useEffect(() => {
     let active = true;
@@ -65,6 +65,7 @@ export function TracksideSetupMatrix() {
       setMatrix(res.data);
       const found = res.data.presets.find((p) => p.preset.name === selectedName);
       setCustomDraft(found ? { ...found.preset } : { ...res.data.base_setup });
+      setIsCustomModified(false);
     });
     return () => {
       active = false;
@@ -79,12 +80,16 @@ export function TracksideSetupMatrix() {
     ];
   }, [matrix]);
 
-  const activeSetup: SetupValues | null = useMemo(() => {
+  const selectedPreset: SetupValues | null = useMemo(() => {
     if (!matrix) return null;
-    if (editMode && customDraft) return customDraft;
     if (selectedName === matrix.base_setup.name) return matrix.base_setup;
     return matrix.presets.find((p) => p.preset.name === selectedName)?.preset ?? matrix.base_setup;
-  }, [customDraft, editMode, matrix, selectedName]);
+  }, [matrix, selectedName]);
+
+  const activeSetup: SetupValues | null = useMemo(() => {
+    if (isCustomModified && customDraft) return customDraft;
+    return selectedPreset;
+  }, [customDraft, isCustomModified, selectedPreset]);
 
   const boundViolations = useMemo(() => {
     const errors: Record<string, string> = {};
@@ -95,7 +100,7 @@ export function TracksideSetupMatrix() {
       const [lo, hi] = bounds[row.boundKey];
       const val = Number(customDraft[row.key]);
       if (val < lo || val > hi) {
-        errors[row.key] = `Bounds [${lo}, ${hi}]`;
+        errors[row.key] = `[${lo}, ${hi}]`;
       }
     }
     return errors;
@@ -103,24 +108,52 @@ export function TracksideSetupMatrix() {
 
   const hasBoundError = Object.keys(boundViolations).length > 0;
 
+  const understeerShiftDegPerG = useMemo(() => {
+    if (!matrix || !activeSetup) return 0;
+    const dLltd = activeSetup.lltd - matrix.base_setup.lltd;
+    const dRake = activeSetup.rake_mm - matrix.base_setup.rake_mm;
+    const dToeF = activeSetup.toe_front_deg - matrix.base_setup.toe_front_deg;
+    return dLltd * 4.8 - dRake * 0.045 - dToeF * 0.22;
+  }, [activeSetup, matrix]);
+
+  const coldPressures = useMemo(() => {
+    const tColdK = coldAmbTempC + 273.15;
+    const tHotK = targetHotTempC + 273.15;
+    const calcCold = (hotGaugeBar: number) => {
+      const pHotAbs = hotGaugeBar + 1.01325;
+      const pColdAbs = pHotAbs * (tColdK / tHotK) - 0.018;
+      return Math.max(0.45, pColdAbs - 1.01325);
+    };
+    const coldF = calcCold(targetHotBarF);
+    const coldR = calcCold(targetHotBarR);
+    return {
+      coldFBar: coldF,
+      coldRBar: coldR,
+      coldFPsi: coldF * 14.5038,
+      coldRPsi: coldR * 14.5038,
+      hotRiseFBar: targetHotBarF - coldF,
+      hotRiseRBar: targetHotBarR - coldR,
+    };
+  }, [coldAmbTempC, targetHotBarF, targetHotBarR, targetHotTempC]);
+
   const handleDispatch = async () => {
     if (!activeSetup) return;
-    if (editMode && hasBoundError) {
+    if (isCustomModified && hasBoundError) {
       pushToast({
         level: "limit",
         title: "Setup Bounds Violation",
-        detail: "Correct out-of-range mechanical parameters before UDP dispatch.",
+        detail: "Correct out-of-range mechanical parameters before UDP 9877 dispatch.",
       });
       return;
     }
 
     setDispatching(true);
-    const payload = editMode
+    const payload = isCustomModified
       ? { setup: activeSetup as unknown as Record<string, unknown> }
       : { preset: activeSetup.name };
     const res = await applySetupPreset(payload, forceOfflineMode);
     setDispatching(false);
-    setActiveSetupName(editMode ? `${activeSetup.name}_custom` : activeSetup.name);
+    setActiveSetupName(isCustomModified ? `${activeSetup.name}_custom` : activeSetup.name);
     pushToast({
       level: res.live ? "nominal" : "info",
       title: res.live
@@ -130,131 +163,94 @@ export function TracksideSetupMatrix() {
     });
   };
 
-  const sensitivity = useMemo(() => {
-    const compoundDtFactor = simCompound === "R20" ? -0.015 : 0.0;
-    const massTimeRatio = 1 + deltaMassKg * 0.0022;
-    const aeroTimeRatio = 1 - (deltaClAPct / 100) * 0.018;
-    const energyScale = Math.pow(3.12 / Math.max(2.6, energyBudgetKwh), 0.14);
-
-    const baseAutocross = 67.1057;
-    const baseEndurance = 1358.9964;
-    const projAutocross = baseAutocross * massTimeRatio * aeroTimeRatio * (1 + compoundDtFactor);
-    const projEndurance =
-      baseEndurance * massTimeRatio * aeroTimeRatio * energyScale * (1 + compoundDtFactor * 0.5);
-
-    const enduranceDeltaS = projEndurance - baseEndurance;
-    const effEnergyPts = (3.12 - energyBudgetKwh) * 28.5;
-    const endTimePts = -enduranceDeltaS * 0.42;
-    const fsgEndEffPts = 282.69 + endTimePts + effEnergyPts;
-    const fssEndEffPts = 335.42 + endTimePts * 1.15 + effEnergyPts * 1.18;
-
-    return {
-      projAutocross,
-      projEndurance,
-      deltaAutocross: projAutocross - baseAutocross,
-      deltaEndurance: enduranceDeltaS,
-      fsgEndEffPts,
-      fsgDelta: fsgEndEffPts - 282.69,
-      fssEndEffPts,
-      fssDelta: fssEndEffPts - 335.42,
-    };
-  }, [deltaClAPct, deltaMassKg, energyBudgetKwh, simCompound]);
-
-  if (!matrix || !activeSetup) {
+  if (!matrix || !activeSetup || !customDraft) {
     return (
-      <div className="machined-panel w-full h-full flex items-center justify-center text-[12px] text-[#94A3B8]">
+      <div className="machined-panel w-full h-full flex items-center justify-center text-[11.5px] font-mono text-[#94A3B8]">
         Loading trackside setup differential matrix...
       </div>
     );
   }
 
-  const massPct = ((deltaMassKg + 15) / 30) * 100;
-  const aeroPct = ((deltaClAPct + 20) / 40) * 100;
-  const energyPct = ((energyBudgetKwh - 2.8) / 0.7) * 100;
+  const kuBarPct = Math.max(0, Math.min(100, 50 + understeerShiftDegPerG * 42));
 
   return (
     <div className="w-full h-full min-h-0 overflow-hidden">
-      {/* Interactive Screen Layout */}
       <div className="w-full h-full min-h-0 no-print">
         <SplitPane
-          direction="horizontal"
-          initialRatio={0.67}
-          minRatio={0.48}
-          maxRatio={0.78}
+          direction="vertical"
+          initialRatio={0.54}
+          minRatio={0.38}
+          maxRatio={0.68}
           first={
             <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden">
-              {/* Top Action Bar */}
-              <div className="panel-header-bar gap-3 flex-wrap">
-                <div className="flex items-center gap-2.5">
-                  <span className="panel-title-label">Trackside Setup Differential Matrix</span>
-                  <span className="status-pill status-pill-gold font-mono text-[10px]">
-                    Active: {activeSetupName}
-                  </span>
-                </div>
+              <InstrumentHeader
+                title="Trackside Setup Differential Matrix"
+                subtitle={`Active: ${activeSetupName}`}
+                right={
+                  <>
+                    <span
+                      className={`status-pill !text-[9.5px] font-mono ${
+                        Math.abs(understeerShiftDegPerG) < 0.05
+                          ? "status-pill-muted"
+                          : understeerShiftDegPerG > 0
+                            ? "status-pill-caution"
+                            : "status-pill-nominal"
+                      }`}
+                    >
+                      ΔKu {understeerShiftDegPerG >= 0 ? "+" : ""}
+                      {understeerShiftDegPerG.toFixed(2)} °/g
+                    </span>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditMode((e) => !e);
-                      if (!editMode) setCustomDraft({ ...activeSetup });
-                    }}
-                    className={`flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] border text-[11px] font-medium cursor-pointer transition-colors ${
-                      editMode
-                        ? "border-[#C5A059]/45 bg-[#C5A059]/12 text-[#DFBE78]"
-                        : "border-white/[0.08] bg-[#161A23] text-[#E2E8F0] hover:border-white/[0.16]"
-                    }`}
-                  >
-                    <SlidersHorizontal className="w-3 h-3" />
-                    {editMode ? "Editing Custom Draft" : "Edit Custom Bounds"}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="h-[21px] px-2 rounded-[3px] border border-[#222633] bg-[#151820] text-[#CBD5E1] hover:border-[#C5A059]/45 hover:text-[#DFBE78] flex items-center gap-1 text-[10px] font-medium cursor-pointer transition-colors"
+                    >
+                      <Printer className="w-3 h-3" />
+                      Print Pit Sheet
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] border border-white/[0.08] bg-[#161A23] text-[#E2E8F0] hover:border-[#C5A059]/45 hover:text-[#DFBE78] text-[11px] font-medium cursor-pointer transition-colors"
-                  >
-                    <Printer className="w-3 h-3" />
-                    Print Pit Sheet
-                  </button>
+                    <button
+                      type="button"
+                      disabled={dispatching || (isCustomModified && hasBoundError)}
+                      onClick={() => void handleDispatch()}
+                      className="h-[21px] px-2.5 rounded-[3px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] font-semibold text-[10px] flex items-center gap-1 cursor-pointer disabled:opacity-45 transition-colors"
+                    >
+                      <Send className="w-3 h-3" />
+                      {dispatching
+                        ? "Dispatching..."
+                        : `Apply ${isCustomModified ? "Custom" : selectedName} (UDP 9877)`}
+                    </button>
+                  </>
+                }
+              />
 
-                  <button
-                    type="button"
-                    disabled={dispatching || (editMode && hasBoundError)}
-                    onClick={() => void handleDispatch()}
-                    className="flex items-center gap-1.5 h-[28px] px-3 rounded-[5px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] font-semibold text-[11px] cursor-pointer disabled:opacity-45 transition-colors shadow-[0_2px_10px_rgba(197,160,89,0.2)]"
-                  >
-                    <Send className="w-3 h-3" />
-                    {dispatching ? "Dispatching..." : `Apply ${selectedName} to Simulator`}
-                  </button>
-                </div>
-              </div>
-
-              {/* Event Optimization Gains Strip */}
-              <div className="grid grid-cols-4 gap-2 p-2.5 bg-[#0E1118] border-b border-white/[0.05]">
+              {/* Compact Event Optimization Gains Strip */}
+              <div className="grid grid-cols-4 gap-1.5 p-1.5 bg-[#0C0E14] border-b border-[#222633] shrink-0">
                 {matrix.optimization_gains.map((g) => (
-                  <div key={g.event} className="machined-card px-3 py-2">
-                    <div className="text-[10.5px] font-medium text-[#94A3B8] truncate">
-                      {g.event_name}
-                    </div>
-                    <div className="flex items-baseline justify-between gap-2 mt-1">
-                      <span className="font-mono text-[13px] font-semibold text-[#F1F5F9] tabular">
+                  <div
+                    key={g.event}
+                    className="rounded-[3px] bg-[#141720] border border-[#222633] px-2.5 py-1 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[9.5px] text-[#7E8899] truncate">{g.event_name}</div>
+                      <div className="font-mono text-[11.5px] font-semibold text-[#ECEFF4] tabular">
                         {g.optimal_time_s.toFixed(3)} s
-                      </span>
-                      <span className="status-pill status-pill-nominal font-mono text-[10px]">
-                        {g.delta_time_s.toFixed(3)} s
-                      </span>
+                      </div>
                     </div>
+                    <span className="status-pill status-pill-nominal !text-[9.5px] font-mono shrink-0">
+                      {g.delta_time_s.toFixed(3)} s
+                    </span>
                   </div>
                 ))}
               </div>
 
-              {/* Differential Comparison Table */}
+              {/* Scrollable High-Density Comparison Table */}
               <div className="flex-1 min-h-0 overflow-auto">
-                <table className="w-full border-collapse text-[11.5px]">
-                  <thead className="sticky top-0 bg-[#141822] border-b border-white/[0.06] z-10">
+                <table className="w-full border-collapse text-[11px]">
+                  <thead className="sticky top-0 bg-[#12151D] border-b border-[#222633] z-10">
                     <tr>
-                      <th className="text-left px-3.5 py-2.5 font-medium text-[#94A3B8] w-[195px]">
+                      <th className="text-left px-3 py-1.5 font-medium text-[#7E8899] w-[180px]">
                         Parameter
                       </th>
                       {allColumns.map((col) => {
@@ -265,135 +261,79 @@ export function TracksideSetupMatrix() {
                             onClick={() => {
                               setSelectedName(col.preset.name);
                               setCustomDraft({ ...col.preset });
+                              setIsCustomModified(false);
                             }}
-                            className={`text-right px-3 py-2 cursor-pointer border-l border-white/[0.05] transition-colors ${
+                            className={`text-right px-2.5 py-1.5 cursor-pointer border-l border-[#1E222E] transition-colors ${
                               isSel
-                                ? "bg-[#C5A059]/10 text-[#DFBE78]"
-                                : "text-[#E2E8F0] hover:bg-white/[0.03]"
+                                ? "bg-[#C5A059]/12 text-[#DFBE78]"
+                                : "text-[#CBD5E1] hover:bg-[#171B26]"
                             }`}
                           >
-                            <div className="font-mono text-[11px] font-semibold">
+                            <div className="font-mono text-[10.5px] font-semibold">
                               {col.preset.name}
                             </div>
-                            <div className="text-[10px] font-normal text-[#94A3B8] mt-0.5">
-                              {col.isBase ? "Base Reference" : col.preset.event}
+                            <div className="text-[9.5px] font-normal text-[#7E8899]">
+                              {col.isBase ? "Base Ref" : col.preset.event}
                             </div>
                           </th>
                         );
                       })}
-                      {editMode ? (
-                        <th className="text-right px-3 py-2 text-[11px] font-semibold text-[#DFBE78] border-l border-[#C5A059]/40 bg-[#C5A059]/10">
-                          Custom Draft
-                        </th>
-                      ) : null}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.045]">
-                    {PARAM_ROWS.map((row) => {
-                      const err = boundViolations[row.key];
-                      return (
-                        <tr key={row.key} className="hover:bg-[#1A202C]/70 transition-colors">
-                          <td className="px-3.5 py-2">
-                            <span className="text-[#F1F5F9] font-medium">{row.label}</span>
-                            <span className="ml-1.5 font-mono text-[10px] text-[#64748B]">
-                              {row.unit}
-                            </span>
-                          </td>
-                          {allColumns.map((col) => {
-                            const val = Number(col.preset[row.key]);
-                            const delta =
-                              !col.isBase && row.deltaKey ? col.deltas_vs_base[row.deltaKey] : 0;
-                            const isSel = col.preset.name === selectedName;
-                            const hasDelta =
-                              !col.isBase && typeof delta === "number" && Math.abs(delta) > 1e-5;
-                            return (
-                              <td
-                                key={col.preset.name}
-                                className={`px-3 py-2 text-right font-mono tabular border-l border-white/[0.045] ${
-                                  isSel ? "bg-[#C5A059]/[0.045]" : ""
-                                }`}
-                              >
-                                <div className="text-[11.5px] text-[#F1F5F9]">
-                                  {val.toFixed(row.decimals)}
-                                </div>
-                                {hasDelta ? (
-                                  <span
-                                    className={`inline-block mt-0.5 px-1.5 py-[1px] rounded-[3px] text-[9.5px] ${
-                                      delta > 0
-                                        ? "bg-[#C5A059]/14 text-[#DFBE78]"
-                                        : "bg-[#38BDF8]/12 text-[#38BDF8]"
-                                    }`}
-                                  >
-                                    {delta > 0 ? "+" : ""}
-                                    {delta.toFixed(row.decimals)}
-                                  </span>
-                                ) : null}
-                              </td>
-                            );
-                          })}
-                          {editMode && customDraft ? (
-                            <td className="px-3 py-1.5 text-right border-l border-[#C5A059]/35 bg-[#0B0D12]">
-                              {row.editable ? (
-                                <div className="flex flex-col items-end">
-                                  <input
-                                    type="number"
-                                    step={row.step ?? 0.01}
-                                    value={Number(customDraft[row.key])}
-                                    onChange={(e) => {
-                                      const v = parseFloat(e.target.value);
-                                      if (!Number.isNaN(v)) {
-                                        setCustomDraft((prev) =>
-                                          prev ? { ...prev, [row.key]: v } : prev
-                                        );
-                                      }
-                                    }}
-                                    className={`w-[82px] h-[25px] bg-[#11141B] border px-2 text-right font-mono text-[11px] rounded-[4px] outline-none ${
-                                      err
-                                        ? "border-[#EF4444] text-[#F87171]"
-                                        : "border-white/[0.1] text-[#F1F5F9] focus:border-[#C5A059]"
-                                    }`}
-                                  />
-                                  {err ? (
-                                    <span className="text-[9.5px] text-[#F87171] mt-0.5">{err}</span>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <span className="font-mono text-[11px] text-[#64748B]">
-                                  {Number(customDraft[row.key]).toFixed(row.decimals)}
-                                </span>
-                              )}
-                            </td>
-                          ) : null}
-                        </tr>
-                      );
-                    })}
-
-                    {/* TV Map & Control Law Rows */}
-                    <tr className="bg-[#0E1118]/70">
-                      <td className="px-3.5 py-2 text-[#94A3B8] font-medium">TV Map File</td>
-                      {allColumns.map((col) => (
-                        <td
-                          key={col.preset.name}
-                          className="px-3 py-2 text-right font-mono text-[10.5px] text-[#DFBE78] border-l border-white/[0.045]"
-                        >
-                          {col.preset.tv_map}
+                  <tbody className="divide-y divide-[#1A1E2A]">
+                    {PARAM_ROWS.map((row) => (
+                      <tr key={row.key} className="hover:bg-[#151923] transition-colors">
+                        <td className="px-3 py-1.5">
+                          <span className="text-[#ECEFF4] font-medium">{row.label}</span>
+                          <span className="ml-1.5 font-mono text-[9.5px] text-[#64748B]">
+                            {row.unit}
+                          </span>
                         </td>
-                      ))}
-                      {editMode ? <td className="border-l border-[#C5A059]/35" /> : null}
-                    </tr>
-                    <tr className="bg-[#0E1118]/70">
-                      <td className="px-3.5 py-2 text-[#94A3B8] font-medium">Control Law</td>
+                        {allColumns.map((col) => {
+                          const val = Number(col.preset[row.key]);
+                          const delta =
+                            !col.isBase && row.deltaKey ? col.deltas_vs_base[row.deltaKey] : 0;
+                          const isSel = col.preset.name === selectedName;
+                          const hasDelta =
+                            !col.isBase && typeof delta === "number" && Math.abs(delta) > 1e-5;
+                          return (
+                            <td
+                              key={col.preset.name}
+                              className={`px-2.5 py-1.5 text-right font-mono tabular border-l border-[#1A1E2A] ${
+                                isSel ? "bg-[#C5A059]/[0.05]" : ""
+                              }`}
+                            >
+                              <span className="text-[#ECEFF4]">{val.toFixed(row.decimals)}</span>
+                              {hasDelta ? (
+                                <span
+                                  className={`ml-1.5 inline-block px-1 py-[0.5px] rounded-[2px] text-[9.5px] ${
+                                    delta > 0
+                                      ? "bg-[#C5A059]/15 text-[#DFBE78]"
+                                      : "bg-[#38BDF8]/12 text-[#38BDF8]"
+                                  }`}
+                                >
+                                  {delta > 0 ? "+" : ""}
+                                  {delta.toFixed(row.decimals)}
+                                </span>
+                              ) : null}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    <tr className="bg-[#0D1017]">
+                      <td className="px-3 py-1.5 text-[#7E8899] font-medium">TV Map / Law</td>
                       {allColumns.map((col) => (
                         <td
                           key={col.preset.name}
-                          className="px-3 py-2 text-right border-l border-white/[0.045]"
+                          className="px-2.5 py-1.5 text-right font-mono text-[10px] border-l border-[#1A1E2A]"
                         >
-                          <span className="status-pill status-pill-muted font-mono text-[10px]">
-                            {col.preset.control_law_mode}
+                          <span className="text-[#DFBE78]">{col.preset.tv_map}</span>
+                          <span className="text-[#64748B] ml-1.5">
+                            [{col.preset.control_law_mode}]
                           </span>
                         </td>
                       ))}
-                      {editMode ? <td className="border-l border-[#C5A059]/35" /> : null}
                     </tr>
                   </tbody>
                 </table>
@@ -402,170 +342,181 @@ export function TracksideSetupMatrix() {
           }
           second={
             <SplitPane
-              direction="vertical"
-              initialRatio={0.54}
-              minRatio={0.32}
-              maxRatio={0.72}
-              first={<SimulationLauncher />}
-              second={
+              direction="horizontal"
+              initialRatio={0.58}
+              minRatio={0.44}
+              maxRatio={0.70}
+              first={
                 <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden">
-                  <div className="panel-header-bar">
-                    <span className="panel-title-label">FSG / FS Spain Points Sensitivity</span>
-                    <span className="status-pill status-pill-gold text-[10px]">Calculated</span>
-                  </div>
-
-                  <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 text-[11px]">
-                    <p className="text-[11px] text-[#94A3B8] m-0 leading-relaxed">
-                      Anchored to validated Endurance + Efficiency baseline (282.69 pts FSG / 335.42
-                      pts FS Spain @ 3.12 kWh). Setup optimization gain:{" "}
-                      <strong className="font-mono text-[#34D399]">
-                        +{matrix.delta_total_pts.toFixed(2)} pts
-                      </strong>
-                      .
-                    </p>
-
-                    <div className="space-y-2.5">
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-[#CBD5E1] font-medium">Vehicle Mass Delta</span>
-                          <span className="font-mono text-[#F1F5F9] tabular">
-                            {deltaMassKg >= 0 ? "+" : ""}
-                            {deltaMassKg} kg ({(263 + deltaMassKg).toFixed(0)} kg)
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          min={-15}
-                          max={15}
-                          step={1}
-                          value={deltaMassKg}
-                          onChange={(e) => setDeltaMassKg(parseFloat(e.target.value))}
-                          className="eng-slider"
-                          style={{
-                            background: `linear-gradient(to right, #C5A059 ${massPct}%, #1C212E ${massPct}%)`,
+                  <InstrumentHeader
+                    title="Custom Setup Sandbox"
+                    subtitle={isCustomModified ? `Modified from ${selectedName}` : selectedName}
+                    right={
+                      <>
+                        <span
+                          className={`status-pill !text-[9.5px] ${
+                            hasBoundError ? "status-pill-limit" : "status-pill-nominal"
+                          }`}
+                        >
+                          {hasBoundError ? "Bounds Error" : "Bounds OK"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedPreset) {
+                              setCustomDraft({ ...selectedPreset });
+                              setIsCustomModified(false);
+                            }
                           }}
-                        />
-                      </div>
+                          className="h-[20px] px-1.5 rounded-[3px] bg-[#151820] hover:bg-[#1E2432] border border-[#222633] text-[#94A3B8] hover:text-[#ECEFF4] flex items-center gap-1 text-[9.5px] cursor-pointer"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          Reset
+                        </button>
+                      </>
+                    }
+                  />
 
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-[#CBD5E1] font-medium">Downforce ClA</span>
-                          <span className="font-mono text-[#F1F5F9] tabular">
-                            {deltaClAPct >= 0 ? "+" : ""}
-                            {deltaClAPct}% ({(2.35 * (1 + deltaClAPct / 100)).toFixed(2)} m²)
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          min={-20}
-                          max={20}
-                          step={1}
-                          value={deltaClAPct}
-                          onChange={(e) => setDeltaClAPct(parseFloat(e.target.value))}
-                          className="eng-slider"
-                          style={{
-                            background: `linear-gradient(to right, #C5A059 ${aeroPct}%, #1C212E ${aeroPct}%)`,
-                          }}
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-[#CBD5E1] font-medium">Endurance Energy Budget</span>
-                          <span className="font-mono text-[#DFBE78] tabular">
-                            {energyBudgetKwh.toFixed(2)} kWh
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          min={2.8}
-                          max={3.5}
-                          step={0.02}
-                          value={energyBudgetKwh}
-                          onChange={(e) => setEnergyBudgetKwh(parseFloat(e.target.value))}
-                          className="eng-slider"
-                          style={{
-                            background: `linear-gradient(to right, #C5A059 ${energyPct}%, #1C212E ${energyPct}%)`,
-                          }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between pt-0.5">
-                        <span className="text-[#CBD5E1] font-medium">Tire Compound</span>
-                        <div className="seg-track">
-                          {(["R25B", "R20"] as const).map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              data-active={simCompound === c ? "true" : "false"}
-                              onClick={() => setSimCompound(c)}
-                              className="seg-btn font-mono"
-                            >
-                              {c}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                  <div className="flex-1 min-h-0 p-2 flex flex-col justify-between gap-2 overflow-hidden">
+                    <div className="grid grid-cols-2 gap-1.5 overflow-y-auto pr-0.5">
+                      {SANDBOX_ROWS.map((row) => {
+                        const bounds =
+                          row.boundKey && vehicleOverview?.setup_bounds?.[row.boundKey];
+                        const minVal = bounds ? bounds[0] : (row.min ?? 0);
+                        const maxVal = bounds ? bounds[1] : (row.max ?? 100);
+                        const err = boundViolations[row.key];
+                        return (
+                          <div key={row.key} className="space-y-0.5">
+                            <PrecisionControl
+                              label={row.label}
+                              value={Number(customDraft[row.key])}
+                              min={minVal}
+                              max={maxVal}
+                              step={row.step ?? 0.01}
+                              unit={row.unit}
+                              decimals={row.decimals}
+                              accent={err ? "#DC2626" : "#C5A059"}
+                              onChange={(val) => {
+                                setCustomDraft((prev) =>
+                                  prev ? { ...prev, [row.key]: val } : prev
+                                );
+                                setIsCustomModified(true);
+                              }}
+                            />
+                            {err ? (
+                              <div className="text-[9px] font-mono text-[#F87171] px-1">
+                                Mechanical limit {err}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/[0.06]">
-                      <div className="machined-card px-3 py-2">
-                        <div className="text-[10px] text-[#94A3B8]">FSG End + Eff</div>
-                        <div className="font-mono text-[13px] text-[#F1F5F9] font-semibold tabular mt-0.5">
-                          {sensitivity.fsgEndEffPts.toFixed(2)} pts
+                    {/* Live Understeer Gradient Balance Gauge */}
+                    <div className="rounded-[3px] bg-[#141720] border border-[#222633] px-2.5 py-1.5 shrink-0">
+                      <div className="flex items-center justify-between text-[10px] font-mono mb-1">
+                        <span className="text-[#38BDF8]">Oversteer / Front Bite (-)</span>
+                        <span className="text-[#ECEFF4] font-semibold tabular">
+                          Understeer Shift ΔKu = {understeerShiftDegPerG >= 0 ? "+" : ""}
+                          {understeerShiftDegPerG.toFixed(2)} °/g
+                        </span>
+                        <span className="text-[#DFBE78]">Understeer Stability (+)</span>
+                      </div>
+                      <div className="relative h-[6px] rounded-[2px] bg-[#08090C] border border-[#222633] overflow-hidden">
+                        <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/25" />
+                        <div
+                          className="absolute top-0 bottom-0 w-[6px] -ml-[3px] rounded-[1px]"
+                          style={{
+                            left: `${kuBarPct}%`,
+                            backgroundColor:
+                              Math.abs(understeerShiftDegPerG) < 0.05
+                                ? "#10B981"
+                                : understeerShiftDegPerG > 0
+                                  ? "#DFBE78"
+                                  : "#38BDF8",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+              second={
+                <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden">
+                  <InstrumentHeader
+                    title="Cold-to-Hot Tire Pressure"
+                    right={
+                      <span className="status-pill status-pill-gold !text-[9.5px] font-mono">
+                        16.0×7.5-10
+                      </span>
+                    }
+                  />
+
+                  <div className="flex-1 min-h-0 p-2 flex flex-col justify-between gap-2 overflow-hidden">
+                    <div className="space-y-1.5">
+                      <PrecisionControl
+                        label="Ambient Cold"
+                        value={coldAmbTempC}
+                        min={5}
+                        max={45}
+                        step={1}
+                        unit="°C"
+                        decimals={0}
+                        onChange={setColdAmbTempC}
+                      />
+                      <PrecisionControl
+                        label="Target Hot"
+                        value={targetHotTempC}
+                        min={45}
+                        max={95}
+                        step={1}
+                        unit="°C"
+                        decimals={0}
+                        onChange={setTargetHotTempC}
+                      />
+                      <PrecisionControl
+                        label="Hot Front"
+                        value={targetHotBarF}
+                        min={0.6}
+                        max={1.3}
+                        step={0.01}
+                        unit="bar"
+                        decimals={2}
+                        accent="#C5A059"
+                        onChange={setTargetHotBarF}
+                      />
+                      <PrecisionControl
+                        label="Hot Rear"
+                        value={targetHotBarR}
+                        min={0.6}
+                        max={1.3}
+                        step={0.01}
+                        unit="bar"
+                        decimals={2}
+                        accent="#38BDF8"
+                        onChange={setTargetHotBarR}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 shrink-0">
+                      <div className="rounded-[3px] bg-[#141720] border border-[#222633] px-2.5 py-2">
+                        <div className="text-[9.5px] text-[#7E8899]">Set Cold Front (FL/FR)</div>
+                        <div className="font-mono text-[15px] font-semibold text-[#DFBE78] tabular mt-0.5">
+                          {coldPressures.coldFBar.toFixed(2)} bar
                         </div>
-                        <div className="mt-1">
-                          <span
-                            className={`status-pill font-mono text-[9.5px] ${
-                              sensitivity.fsgDelta >= 0
-                                ? "status-pill-nominal"
-                                : "status-pill-limit"
-                            }`}
-                          >
-                            {sensitivity.fsgDelta >= 0 ? "+" : ""}
-                            {sensitivity.fsgDelta.toFixed(2)} pts
-                          </span>
+                        <div className="font-mono text-[9.5px] text-[#94A3B8] tabular">
+                          {coldPressures.coldFPsi.toFixed(1)} psi · +{coldPressures.hotRiseFBar.toFixed(2)} bar
                         </div>
                       </div>
 
-                      <div className="machined-card px-3 py-2">
-                        <div className="text-[10px] text-[#94A3B8]">FS Spain End + Eff</div>
-                        <div className="font-mono text-[13px] text-[#F1F5F9] font-semibold tabular mt-0.5">
-                          {sensitivity.fssEndEffPts.toFixed(2)} pts
+                      <div className="rounded-[3px] bg-[#141720] border border-[#222633] px-2.5 py-2">
+                        <div className="text-[9.5px] text-[#7E8899]">Set Cold Rear (RL/RR)</div>
+                        <div className="font-mono text-[15px] font-semibold text-[#38BDF8] tabular mt-0.5">
+                          {coldPressures.coldRBar.toFixed(2)} bar
                         </div>
-                        <div className="mt-1">
-                          <span
-                            className={`status-pill font-mono text-[9.5px] ${
-                              sensitivity.fssDelta >= 0
-                                ? "status-pill-nominal"
-                                : "status-pill-limit"
-                            }`}
-                          >
-                            {sensitivity.fssDelta >= 0 ? "+" : ""}
-                            {sensitivity.fssDelta.toFixed(2)} pts
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="machined-card px-3 py-2">
-                        <div className="text-[10px] text-[#94A3B8]">Projected Autocross</div>
-                        <div className="font-mono text-[11.5px] text-[#F1F5F9] tabular mt-0.5">
-                          {sensitivity.projAutocross.toFixed(2)} s{" "}
-                          <span className="text-[#94A3B8]">
-                            ({sensitivity.deltaAutocross >= 0 ? "+" : ""}
-                            {sensitivity.deltaAutocross.toFixed(2)}s)
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="machined-card px-3 py-2">
-                        <div className="text-[10px] text-[#94A3B8]">Projected Endurance</div>
-                        <div className="font-mono text-[11.5px] text-[#F1F5F9] tabular mt-0.5">
-                          {sensitivity.projEndurance.toFixed(1)} s{" "}
-                          <span className="text-[#94A3B8]">
-                            ({sensitivity.deltaEndurance >= 0 ? "+" : ""}
-                            {sensitivity.deltaEndurance.toFixed(1)}s)
-                          </span>
+                        <div className="font-mono text-[9.5px] text-[#94A3B8] tabular">
+                          {coldPressures.coldRPsi.toFixed(1)} psi · +{coldPressures.hotRiseRBar.toFixed(2)} bar
                         </div>
                       </div>
                     </div>
