@@ -84,47 +84,44 @@ export function AppShell({ children }: AppShellProps) {
   ]);
 
   return (
-    <div className="w-screen h-screen overflow-hidden flex flex-col bg-[#08090C] text-[#ECEFF4]">
+    <div className="w-screen h-screen overflow-hidden flex flex-col bg-[#07080B] text-[#F1F5F9]">
       <TopStatusBar />
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <SidebarNav activeRoute={activeRoute} onSelectRoute={setActiveRoute} />
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-[#08090C] flex flex-col">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-[#07080B] p-2 flex flex-col">
           {children}
         </main>
       </div>
 
-      {/* Non-blocking telemetry / UDP command toast stack */}
+      {/* Elevated non-blocking toast notifications */}
       {toasts.length > 0 ? (
-        <div className="fixed bottom-3 right-3 z-40 flex flex-col gap-1.5 w-[340px] max-w-[90vw] no-print">
+        <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-2 w-[360px] max-w-[90vw] no-print">
           {toasts.map((t) => {
-            const borderColor =
+            const accent =
               t.level === "nominal"
-                ? "border-[#10B981]"
+                ? "bg-[#10B981]"
                 : t.level === "caution"
-                  ? "border-[#D97706]"
+                  ? "bg-[#D97706]"
                   : t.level === "limit"
-                    ? "border-[#DC2626]"
-                    : "border-[#C5A059]";
+                    ? "bg-[#EF4444]"
+                    : "bg-[#C5A059]";
             return (
               <div
                 key={t.id}
-                className={`bg-[#0F1116] border ${borderColor} rounded-[2px] px-2.5 py-2 flex items-start justify-between gap-2`}
+                className="relative overflow-hidden bg-[#161A23] border border-white/[0.09] rounded-[6px] pl-3.5 pr-2.5 py-2.5 flex items-start justify-between gap-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
               >
+                <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${accent}`} />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-semibold text-[#ECEFF4] truncate">
-                    {t.title}
-                  </div>
-                  <div className="text-[10px] font-mono text-[#7E8799] leading-snug mt-0.5">
-                    {t.detail}
-                  </div>
+                  <div className="text-[12px] font-semibold text-[#F1F5F9] truncate">{t.title}</div>
+                  <div className="text-[11px] text-[#94A3B8] leading-snug mt-0.5">{t.detail}</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => dismissToast(t.id)}
                   aria-label="Dismiss notification"
-                  className="text-[#7E8799] hover:text-[#ECEFF4] p-0.5 cursor-pointer shrink-0"
+                  className="text-[#64748B] hover:text-[#F1F5F9] p-0.5 rounded-[4px] hover:bg-white/[0.06] cursor-pointer shrink-0"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             );

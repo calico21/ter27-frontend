@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Printer, Send } from "lucide-react";
+import { Printer, Send, SlidersHorizontal } from "lucide-react";
 import type {
   SetupsMatrixResponse,
   SetupValues,
@@ -28,14 +28,14 @@ const PARAM_ROWS: ParamRowSpec[] = [
   { key: "toe_front_deg", deltaKey: "toe_front_deg", boundKey: "toe_f_deg", label: "Toe Front", unit: "deg", decimals: 3, editable: true, step: 0.05 },
   { key: "toe_rear_deg", deltaKey: "toe_rear_deg", boundKey: "toe_r_deg", label: "Toe Rear", unit: "deg", decimals: 3, editable: true, step: 0.05 },
   { key: "brake_bias", deltaKey: "brake_bias", boundKey: "brake_bias", label: "Brake Bias Front", unit: "ratio", decimals: 4, editable: true, step: 0.01 },
-  { key: "rake_mm", deltaKey: "rake_mm", boundKey: "rake_mm", label: "Rake", unit: "mm", decimals: 2, editable: true, step: 0.25 },
+  { key: "rake_mm", deltaKey: "rake_mm", boundKey: "rake_mm", label: "Aero Rake", unit: "mm", decimals: 2, editable: true, step: 0.25 },
   { key: "spring_rate_front_n_m", deltaKey: "spring_rate_front_n_m", label: "Spring Rate F", unit: "N/m", decimals: 0 },
   { key: "spring_rate_rear_n_m", deltaKey: "spring_rate_rear_n_m", label: "Spring Rate R", unit: "N/m", decimals: 0 },
   { key: "arb_front_nm_rad", deltaKey: "arb_front_nm_rad", label: "ARB Front", unit: "Nm/rad", decimals: 1 },
   { key: "arb_rear_nm_rad", deltaKey: "arb_rear_nm_rad", label: "ARB Rear", unit: "Nm/rad", decimals: 1 },
   { key: "power_limit_kw", deltaKey: "power_limit_kw", label: "HV Power Limit", unit: "kW", decimals: 1 },
-  { key: "tire_pressure_front_bar", label: "Pressure F", unit: "bar", decimals: 2 },
-  { key: "tire_pressure_rear_bar", label: "Pressure R", unit: "bar", decimals: 2 },
+  { key: "tire_pressure_front_bar", label: "Pressure Front", unit: "bar", decimals: 2 },
+  { key: "tire_pressure_rear_bar", label: "Pressure Rear", unit: "bar", decimals: 2 },
 ];
 
 export function TracksideSetupMatrix() {
@@ -53,7 +53,6 @@ export function TracksideSetupMatrix() {
   const [editMode, setEditMode] = useState<boolean>(false);
   const [dispatching, setDispatching] = useState<boolean>(false);
 
-  // FSG / FS Spain Points & Design Sensitivity Simulator
   const [deltaMassKg, setDeltaMassKg] = useState<number>(0);
   const [deltaClAPct, setDeltaClAPct] = useState<number>(0);
   const [energyBudgetKwh, setEnergyBudgetKwh] = useState<number>(3.12);
@@ -87,7 +86,6 @@ export function TracksideSetupMatrix() {
     return matrix.presets.find((p) => p.preset.name === selectedName)?.preset ?? matrix.base_setup;
   }, [customDraft, editMode, matrix, selectedName]);
 
-  // Mechanical bounds verification for custom edits
   const boundViolations = useMemo(() => {
     const errors: Record<string, string> = {};
     if (!customDraft || !vehicleOverview?.setup_bounds) return errors;
@@ -97,7 +95,7 @@ export function TracksideSetupMatrix() {
       const [lo, hi] = bounds[row.boundKey];
       const val = Number(customDraft[row.key]);
       if (val < lo || val > hi) {
-        errors[row.key] = `Out of mechanical bounds [${lo}, ${hi}]`;
+        errors[row.key] = `Bounds [${lo}, ${hi}]`;
       }
     }
     return errors;
@@ -132,10 +130,8 @@ export function TracksideSetupMatrix() {
     });
   };
 
-  // Sensitivity projection anchored strictly to validated baseline:
-  // 282.69 pts FSG / 335.42 pts FS Spain (Endurance + Efficiency @ 3.12 kWh, R25B)
   const sensitivity = useMemo(() => {
-    const compoundDtFactor = simCompound === "R20" ? -0.015 : 0.0; // R20 slightly softer peak grip, higher wear
+    const compoundDtFactor = simCompound === "R20" ? -0.015 : 0.0;
     const massTimeRatio = 1 + deltaMassKg * 0.0022;
     const aeroTimeRatio = 1 - (deltaClAPct / 100) * 0.018;
     const energyScale = Math.pow(3.12 / Math.max(2.6, energyBudgetKwh), 0.14);
@@ -147,7 +143,6 @@ export function TracksideSetupMatrix() {
       baseEndurance * massTimeRatio * aeroTimeRatio * energyScale * (1 + compoundDtFactor * 0.5);
 
     const enduranceDeltaS = projEndurance - baseEndurance;
-    // Efficiency rewards lower energy consumption; Endurance penalizes slower time
     const effEnergyPts = (3.12 - energyBudgetKwh) * 28.5;
     const endTimePts = -enduranceDeltaS * 0.42;
     const fsgEndEffPts = 282.69 + endTimePts + effEnergyPts;
@@ -167,15 +162,19 @@ export function TracksideSetupMatrix() {
 
   if (!matrix || !activeSetup) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-[#08090C] font-mono text-[11px] text-[#7E8799]">
+      <div className="machined-panel w-full h-full flex items-center justify-center text-[12px] text-[#94A3B8]">
         Loading trackside setup differential matrix...
       </div>
     );
   }
 
+  const massPct = ((deltaMassKg + 15) / 30) * 100;
+  const aeroPct = ((deltaClAPct + 20) / 40) * 100;
+  const energyPct = ((energyBudgetKwh - 2.8) / 0.7) * 100;
+
   return (
-    <div className="w-full h-full min-h-0 overflow-hidden bg-[#08090C]">
-      {/* Screen Interactive Layout */}
+    <div className="w-full h-full min-h-0 overflow-hidden">
+      {/* Interactive Screen Layout */}
       <div className="w-full h-full min-h-0 no-print">
         <SplitPane
           direction="horizontal"
@@ -183,36 +182,37 @@ export function TracksideSetupMatrix() {
           minRatio={0.48}
           maxRatio={0.78}
           first={
-            <div className="w-full h-full min-h-0 flex flex-col bg-[#0F1116]">
-              {/* Action Bar */}
-              <div className="panel-header-bar gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
+            <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden">
+              {/* Top Action Bar */}
+              <div className="panel-header-bar gap-3 flex-wrap">
+                <div className="flex items-center gap-2.5">
                   <span className="panel-title-label">Trackside Setup Differential Matrix</span>
-                  <span className="text-[10px] font-mono text-[#7E8799]">
-                    ACTIVE: <strong className="text-[#C5A059]">{activeSetupName}</strong>
+                  <span className="status-pill status-pill-gold font-mono text-[10px]">
+                    Active: {activeSetupName}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setEditMode((e) => !e);
                       if (!editMode) setCustomDraft({ ...activeSetup });
                     }}
-                    className={`px-2 py-0.5 border rounded-[2px] cursor-pointer ${
+                    className={`flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] border text-[11px] font-medium cursor-pointer transition-colors ${
                       editMode
-                        ? "border-[#C5A059] text-[#C5A059] bg-[#1B1F2A]"
-                        : "border-[#222633] bg-[#08090C] text-[#ECEFF4]"
+                        ? "border-[#C5A059]/45 bg-[#C5A059]/12 text-[#DFBE78]"
+                        : "border-white/[0.08] bg-[#161A23] text-[#E2E8F0] hover:border-white/[0.16]"
                     }`}
                   >
+                    <SlidersHorizontal className="w-3 h-3" />
                     {editMode ? "Editing Custom Draft" : "Edit Custom Bounds"}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="flex items-center gap-1 px-2 py-0.5 border border-[#222633] bg-[#08090C] text-[#ECEFF4] hover:border-[#C5A059] rounded-[2px] cursor-pointer"
+                    className="flex items-center gap-1.5 h-[28px] px-2.5 rounded-[5px] border border-white/[0.08] bg-[#161A23] text-[#E2E8F0] hover:border-[#C5A059]/45 hover:text-[#DFBE78] text-[11px] font-medium cursor-pointer transition-colors"
                   >
                     <Printer className="w-3 h-3" />
                     Print Pit Sheet
@@ -222,25 +222,27 @@ export function TracksideSetupMatrix() {
                     type="button"
                     disabled={dispatching || (editMode && hasBoundError)}
                     onClick={() => void handleDispatch()}
-                    className="flex items-center gap-1 px-2.5 py-0.5 bg-[#C5A059] hover:bg-[#D4B06A] text-[#08090C] font-semibold rounded-[2px] cursor-pointer disabled:opacity-45"
+                    className="flex items-center gap-1.5 h-[28px] px-3 rounded-[5px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] font-semibold text-[11px] cursor-pointer disabled:opacity-45 transition-colors shadow-[0_2px_10px_rgba(197,160,89,0.2)]"
                   >
                     <Send className="w-3 h-3" />
-                    {dispatching ? "Dispatching..." : `Push ${selectedName} (UDP 9877)`}
+                    {dispatching ? "Dispatching..." : `Apply ${selectedName} to Simulator`}
                   </button>
                 </div>
               </div>
 
-              {/* Optimization Gains Summary Ribbon */}
-              <div className="grid grid-cols-4 border-b border-[#222633] bg-[#151820] divide-x divide-[#222633] font-mono text-[10px]">
+              {/* Event Optimization Gains Strip */}
+              <div className="grid grid-cols-4 gap-2 p-2.5 bg-[#0E1118] border-b border-white/[0.05]">
                 {matrix.optimization_gains.map((g) => (
-                  <div key={g.event} className="px-2.5 py-1.5">
-                    <div className="text-[9px] text-[#7E8799] uppercase">{g.event_name}</div>
-                    <div className="flex items-baseline justify-between mt-0.5">
-                      <span className="text-[#ECEFF4] font-semibold">
+                  <div key={g.event} className="machined-card px-3 py-2">
+                    <div className="text-[10.5px] font-medium text-[#94A3B8] truncate">
+                      {g.event_name}
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2 mt-1">
+                      <span className="font-mono text-[13px] font-semibold text-[#F1F5F9] tabular">
                         {g.optimal_time_s.toFixed(3)} s
                       </span>
-                      <span className="text-[#10B981]">
-                        {g.delta_time_s.toFixed(4)} s ({g.delta_pct.toFixed(2)}%)
+                      <span className="status-pill status-pill-nominal font-mono text-[10px]">
+                        {g.delta_time_s.toFixed(3)} s
                       </span>
                     </div>
                   </div>
@@ -249,11 +251,11 @@ export function TracksideSetupMatrix() {
 
               {/* Differential Comparison Table */}
               <div className="flex-1 min-h-0 overflow-auto">
-                <table className="w-full border-collapse font-mono text-[11px]">
-                  <thead className="sticky top-0 bg-[#151820] border-b border-[#222633] z-10">
+                <table className="w-full border-collapse text-[11.5px]">
+                  <thead className="sticky top-0 bg-[#141822] border-b border-white/[0.06] z-10">
                     <tr>
-                      <th className="text-left px-2.5 py-2 text-[10px] text-[#7E8799] w-[180px]">
-                        PARAMETER [UNIT]
+                      <th className="text-left px-3.5 py-2.5 font-medium text-[#94A3B8] w-[195px]">
+                        Parameter
                       </th>
                       {allColumns.map((col) => {
                         const isSel = col.preset.name === selectedName;
@@ -264,65 +266,75 @@ export function TracksideSetupMatrix() {
                               setSelectedName(col.preset.name);
                               setCustomDraft({ ...col.preset });
                             }}
-                            className={`text-right px-2 py-2 text-[10px] cursor-pointer border-l border-[#222633] ${
+                            className={`text-right px-3 py-2 cursor-pointer border-l border-white/[0.05] transition-colors ${
                               isSel
-                                ? "bg-[#1B1F2A] text-[#C5A059]"
-                                : "text-[#ECEFF4] hover:bg-[#1B1F2A]/50"
+                                ? "bg-[#C5A059]/10 text-[#DFBE78]"
+                                : "text-[#E2E8F0] hover:bg-white/[0.03]"
                             }`}
                           >
-                            <div>{col.preset.name}</div>
-                            <div className="text-[9px] font-normal text-[#7E8799]">
-                              {col.isBase ? "BASE REF" : col.preset.event.toUpperCase()}
+                            <div className="font-mono text-[11px] font-semibold">
+                              {col.preset.name}
+                            </div>
+                            <div className="text-[10px] font-normal text-[#94A3B8] mt-0.5">
+                              {col.isBase ? "Base Reference" : col.preset.event}
                             </div>
                           </th>
                         );
                       })}
                       {editMode ? (
-                        <th className="text-right px-2 py-2 text-[10px] text-[#C5A059] border-l border-[#C5A059] bg-[#1B1F2A]">
-                          CUSTOM DRAFT
+                        <th className="text-right px-3 py-2 text-[11px] font-semibold text-[#DFBE78] border-l border-[#C5A059]/40 bg-[#C5A059]/10">
+                          Custom Draft
                         </th>
                       ) : null}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#222633]">
+                  <tbody className="divide-y divide-white/[0.045]">
                     {PARAM_ROWS.map((row) => {
                       const err = boundViolations[row.key];
                       return (
-                        <tr key={row.key} className="hover:bg-[#1B1F2A]/60">
-                          <td className="px-2.5 py-1.5 text-[#ECEFF4]">
-                            <span>{row.label}</span>{" "}
-                            <span className="text-[9px] text-[#7E8799]">[{row.unit}]</span>
+                        <tr key={row.key} className="hover:bg-[#1A202C]/70 transition-colors">
+                          <td className="px-3.5 py-2">
+                            <span className="text-[#F1F5F9] font-medium">{row.label}</span>
+                            <span className="ml-1.5 font-mono text-[10px] text-[#64748B]">
+                              {row.unit}
+                            </span>
                           </td>
                           {allColumns.map((col) => {
                             const val = Number(col.preset[row.key]);
                             const delta =
                               !col.isBase && row.deltaKey ? col.deltas_vs_base[row.deltaKey] : 0;
                             const isSel = col.preset.name === selectedName;
+                            const hasDelta =
+                              !col.isBase && typeof delta === "number" && Math.abs(delta) > 1e-5;
                             return (
                               <td
                                 key={col.preset.name}
-                                className={`px-2 py-1.5 text-right border-l border-[#222633] ${
-                                  isSel ? "bg-[#1B1F2A]/70" : ""
+                                className={`px-3 py-2 text-right font-mono tabular border-l border-white/[0.045] ${
+                                  isSel ? "bg-[#C5A059]/[0.045]" : ""
                                 }`}
                               >
-                                <div className="text-[#ECEFF4]">{val.toFixed(row.decimals)}</div>
-                                {!col.isBase && typeof delta === "number" && Math.abs(delta) > 1e-5 ? (
-                                  <div
-                                    className={`text-[9px] ${
-                                      delta > 0 ? "text-[#C5A059]" : "text-[#38BDF8]"
+                                <div className="text-[11.5px] text-[#F1F5F9]">
+                                  {val.toFixed(row.decimals)}
+                                </div>
+                                {hasDelta ? (
+                                  <span
+                                    className={`inline-block mt-0.5 px-1.5 py-[1px] rounded-[3px] text-[9.5px] ${
+                                      delta > 0
+                                        ? "bg-[#C5A059]/14 text-[#DFBE78]"
+                                        : "bg-[#38BDF8]/12 text-[#38BDF8]"
                                     }`}
                                   >
                                     {delta > 0 ? "+" : ""}
                                     {delta.toFixed(row.decimals)}
-                                  </div>
+                                  </span>
                                 ) : null}
                               </td>
                             );
                           })}
                           {editMode && customDraft ? (
-                            <td className="px-2 py-1 text-right border-l border-[#C5A059] bg-[#08090C]">
+                            <td className="px-3 py-1.5 text-right border-l border-[#C5A059]/35 bg-[#0B0D12]">
                               {row.editable ? (
-                                <div>
+                                <div className="flex flex-col items-end">
                                   <input
                                     type="number"
                                     step={row.step ?? 0.01}
@@ -335,18 +347,18 @@ export function TracksideSetupMatrix() {
                                         );
                                       }
                                     }}
-                                    className={`w-[78px] bg-[#0F1116] border px-1.5 py-0.5 text-right rounded-[2px] ${
+                                    className={`w-[82px] h-[25px] bg-[#11141B] border px-2 text-right font-mono text-[11px] rounded-[4px] outline-none ${
                                       err
-                                        ? "border-[#DC2626] text-[#DC2626]"
-                                        : "border-[#222633] text-[#ECEFF4]"
+                                        ? "border-[#EF4444] text-[#F87171]"
+                                        : "border-white/[0.1] text-[#F1F5F9] focus:border-[#C5A059]"
                                     }`}
                                   />
                                   {err ? (
-                                    <div className="text-[8px] text-[#DC2626] mt-0.5">{err}</div>
+                                    <span className="text-[9.5px] text-[#F87171] mt-0.5">{err}</span>
                                   ) : null}
                                 </div>
                               ) : (
-                                <span className="text-[#7E8799]">
+                                <span className="font-mono text-[11px] text-[#64748B]">
                                   {Number(customDraft[row.key]).toFixed(row.decimals)}
                                 </span>
                               )}
@@ -355,30 +367,33 @@ export function TracksideSetupMatrix() {
                         </tr>
                       );
                     })}
-                    {/* String metadata rows: TV Map & Control Law */}
-                    <tr className="bg-[#151820]/50">
-                      <td className="px-2.5 py-1.5 text-[#7E8799]">TV Map File</td>
+
+                    {/* TV Map & Control Law Rows */}
+                    <tr className="bg-[#0E1118]/70">
+                      <td className="px-3.5 py-2 text-[#94A3B8] font-medium">TV Map File</td>
                       {allColumns.map((col) => (
                         <td
                           key={col.preset.name}
-                          className="px-2 py-1.5 text-right text-[10px] text-[#C5A059] border-l border-[#222633]"
+                          className="px-3 py-2 text-right font-mono text-[10.5px] text-[#DFBE78] border-l border-white/[0.045]"
                         >
                           {col.preset.tv_map}
                         </td>
                       ))}
-                      {editMode ? <td className="border-l border-[#C5A059]" /> : null}
+                      {editMode ? <td className="border-l border-[#C5A059]/35" /> : null}
                     </tr>
-                    <tr className="bg-[#151820]/50">
-                      <td className="px-2.5 py-1.5 text-[#7E8799]">Control Law Mode</td>
+                    <tr className="bg-[#0E1118]/70">
+                      <td className="px-3.5 py-2 text-[#94A3B8] font-medium">Control Law</td>
                       {allColumns.map((col) => (
                         <td
                           key={col.preset.name}
-                          className="px-2 py-1.5 text-right text-[10px] text-[#ECEFF4] border-l border-[#222633]"
+                          className="px-3 py-2 text-right border-l border-white/[0.045]"
                         >
-                          {col.preset.control_law_mode.toUpperCase()}
+                          <span className="status-pill status-pill-muted font-mono text-[10px]">
+                            {col.preset.control_law_mode}
+                          </span>
                         </td>
                       ))}
-                      {editMode ? <td className="border-l border-[#C5A059]" /> : null}
+                      {editMode ? <td className="border-l border-[#C5A059]/35" /> : null}
                     </tr>
                   </tbody>
                 </table>
@@ -393,138 +408,164 @@ export function TracksideSetupMatrix() {
               maxRatio={0.72}
               first={<SimulationLauncher />}
               second={
-                <div className="w-full h-full min-h-0 flex flex-col bg-[#0F1116] overflow-y-auto">
+                <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden">
                   <div className="panel-header-bar">
-                    <span className="panel-title-label">
-                      FSG / FS Spain Points Sensitivity Simulator
-                    </span>
-                    <span className="text-[9px] font-mono text-[#C5A059]">
-                      CALCULATED SENSITIVITY
-                    </span>
+                    <span className="panel-title-label">FSG / FS Spain Points Sensitivity</span>
+                    <span className="status-pill status-pill-gold text-[10px]">Calculated</span>
                   </div>
 
-                  <div className="p-2.5 space-y-2.5 font-mono text-[10px]">
-                    <div className="text-[9px] text-[#7E8799] leading-snug">
-                      Anchored to validated Endurance + Efficiency baseline: 282.69 pts (FSG) /
-                      335.42 pts (FS Spain) @ 3.12 kWh | Setup optimization gain: +
-                      {matrix.delta_total_pts.toFixed(2)} dynamic pts.
-                    </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 text-[11px]">
+                    <p className="text-[11px] text-[#94A3B8] m-0 leading-relaxed">
+                      Anchored to validated Endurance + Efficiency baseline (282.69 pts FSG / 335.42
+                      pts FS Spain @ 3.12 kWh). Setup optimization gain:{" "}
+                      <strong className="font-mono text-[#34D399]">
+                        +{matrix.delta_total_pts.toFixed(2)} pts
+                      </strong>
+                      .
+                    </p>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-[#7E8799]">Delta Mass [kg]</span>
-                        <span className="text-[#ECEFF4]">
-                          {deltaMassKg >= 0 ? "+" : ""}
-                          {deltaMassKg} kg ({(263 + deltaMassKg).toFixed(0)} kg)
-                        </span>
+                    <div className="space-y-2.5">
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-[#CBD5E1] font-medium">Vehicle Mass Delta</span>
+                          <span className="font-mono text-[#F1F5F9] tabular">
+                            {deltaMassKg >= 0 ? "+" : ""}
+                            {deltaMassKg} kg ({(263 + deltaMassKg).toFixed(0)} kg)
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={-15}
+                          max={15}
+                          step={1}
+                          value={deltaMassKg}
+                          onChange={(e) => setDeltaMassKg(parseFloat(e.target.value))}
+                          className="eng-slider"
+                          style={{
+                            background: `linear-gradient(to right, #C5A059 ${massPct}%, #1C212E ${massPct}%)`,
+                          }}
+                        />
                       </div>
-                      <input
-                        type="range"
-                        min={-15}
-                        max={15}
-                        step={1}
-                        value={deltaMassKg}
-                        onChange={(e) => setDeltaMassKg(parseFloat(e.target.value))}
-                        className="eng-slider"
-                      />
-                    </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-[#7E8799]">Downforce ClA [%]</span>
-                        <span className="text-[#ECEFF4]">
-                          {deltaClAPct >= 0 ? "+" : ""}
-                          {deltaClAPct}% ({(2.35 * (1 + deltaClAPct / 100)).toFixed(2)} m2)
-                        </span>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-[#CBD5E1] font-medium">Downforce ClA</span>
+                          <span className="font-mono text-[#F1F5F9] tabular">
+                            {deltaClAPct >= 0 ? "+" : ""}
+                            {deltaClAPct}% ({(2.35 * (1 + deltaClAPct / 100)).toFixed(2)} m²)
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={-20}
+                          max={20}
+                          step={1}
+                          value={deltaClAPct}
+                          onChange={(e) => setDeltaClAPct(parseFloat(e.target.value))}
+                          className="eng-slider"
+                          style={{
+                            background: `linear-gradient(to right, #C5A059 ${aeroPct}%, #1C212E ${aeroPct}%)`,
+                          }}
+                        />
                       </div>
-                      <input
-                        type="range"
-                        min={-20}
-                        max={20}
-                        step={1}
-                        value={deltaClAPct}
-                        onChange={(e) => setDeltaClAPct(parseFloat(e.target.value))}
-                        className="eng-slider"
-                      />
-                    </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-[#7E8799]">Endurance Energy Budget [kWh]</span>
-                        <span className="text-[#C5A059]">{energyBudgetKwh.toFixed(2)} kWh</span>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-[#CBD5E1] font-medium">Endurance Energy Budget</span>
+                          <span className="font-mono text-[#DFBE78] tabular">
+                            {energyBudgetKwh.toFixed(2)} kWh
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={2.8}
+                          max={3.5}
+                          step={0.02}
+                          value={energyBudgetKwh}
+                          onChange={(e) => setEnergyBudgetKwh(parseFloat(e.target.value))}
+                          className="eng-slider"
+                          style={{
+                            background: `linear-gradient(to right, #C5A059 ${energyPct}%, #1C212E ${energyPct}%)`,
+                          }}
+                        />
                       </div>
-                      <input
-                        type="range"
-                        min={2.8}
-                        max={3.5}
-                        step={0.02}
-                        value={energyBudgetKwh}
-                        onChange={(e) => setEnergyBudgetKwh(parseFloat(e.target.value))}
-                        className="eng-slider"
-                      />
-                    </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-[#7E8799]">Compound Selection</span>
-                      <div className="flex border border-[#222633] rounded-[2px] bg-[#08090C]">
-                        {(["R25B", "R20"] as const).map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => setSimCompound(c)}
-                            className={`px-2 py-0.5 cursor-pointer ${
-                              simCompound === c ? "bg-[#1B1F2A] text-[#C5A059]" : "text-[#7E8799]"
-                            }`}
-                          >
-                            {c}
-                          </button>
-                        ))}
+                      <div className="flex items-center justify-between pt-0.5">
+                        <span className="text-[#CBD5E1] font-medium">Tire Compound</span>
+                        <div className="seg-track">
+                          {(["R25B", "R20"] as const).map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              data-active={simCompound === c ? "true" : "false"}
+                              onClick={() => setSimCompound(c)}
+                              className="seg-btn font-mono"
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[#222633]">
-                      <div className="bg-[#151820] border border-[#222633] px-2 py-1.5">
-                        <div className="text-[9px] text-[#7E8799]">FSG END + EFF</div>
-                        <div className="text-[12px] text-[#ECEFF4] font-semibold">
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/[0.06]">
+                      <div className="machined-card px-3 py-2">
+                        <div className="text-[10px] text-[#94A3B8]">FSG End + Eff</div>
+                        <div className="font-mono text-[13px] text-[#F1F5F9] font-semibold tabular mt-0.5">
                           {sensitivity.fsgEndEffPts.toFixed(2)} pts
                         </div>
-                        <div
-                          className={
-                            sensitivity.fsgDelta >= 0 ? "text-[#10B981]" : "text-[#DC2626]"
-                          }
-                        >
-                          {sensitivity.fsgDelta >= 0 ? "+" : ""}
-                          {sensitivity.fsgDelta.toFixed(2)} pts vs base
+                        <div className="mt-1">
+                          <span
+                            className={`status-pill font-mono text-[9.5px] ${
+                              sensitivity.fsgDelta >= 0
+                                ? "status-pill-nominal"
+                                : "status-pill-limit"
+                            }`}
+                          >
+                            {sensitivity.fsgDelta >= 0 ? "+" : ""}
+                            {sensitivity.fsgDelta.toFixed(2)} pts
+                          </span>
                         </div>
                       </div>
-                      <div className="bg-[#151820] border border-[#222633] px-2 py-1.5">
-                        <div className="text-[9px] text-[#7E8799]">FS SPAIN END + EFF</div>
-                        <div className="text-[12px] text-[#ECEFF4] font-semibold">
+
+                      <div className="machined-card px-3 py-2">
+                        <div className="text-[10px] text-[#94A3B8]">FS Spain End + Eff</div>
+                        <div className="font-mono text-[13px] text-[#F1F5F9] font-semibold tabular mt-0.5">
                           {sensitivity.fssEndEffPts.toFixed(2)} pts
                         </div>
-                        <div
-                          className={
-                            sensitivity.fssDelta >= 0 ? "text-[#10B981]" : "text-[#DC2626]"
-                          }
-                        >
-                          {sensitivity.fssDelta >= 0 ? "+" : ""}
-                          {sensitivity.fssDelta.toFixed(2)} pts vs base
+                        <div className="mt-1">
+                          <span
+                            className={`status-pill font-mono text-[9.5px] ${
+                              sensitivity.fssDelta >= 0
+                                ? "status-pill-nominal"
+                                : "status-pill-limit"
+                            }`}
+                          >
+                            {sensitivity.fssDelta >= 0 ? "+" : ""}
+                            {sensitivity.fssDelta.toFixed(2)} pts
+                          </span>
                         </div>
                       </div>
-                      <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-                        <div className="text-[9px] text-[#7E8799]">PROJ AUTOCROSS</div>
-                        <div className="text-[#ECEFF4]">
-                          {sensitivity.projAutocross.toFixed(2)} s (
-                          {sensitivity.deltaAutocross >= 0 ? "+" : ""}
-                          {sensitivity.deltaAutocross.toFixed(2)} s)
+
+                      <div className="machined-card px-3 py-2">
+                        <div className="text-[10px] text-[#94A3B8]">Projected Autocross</div>
+                        <div className="font-mono text-[11.5px] text-[#F1F5F9] tabular mt-0.5">
+                          {sensitivity.projAutocross.toFixed(2)} s{" "}
+                          <span className="text-[#94A3B8]">
+                            ({sensitivity.deltaAutocross >= 0 ? "+" : ""}
+                            {sensitivity.deltaAutocross.toFixed(2)}s)
+                          </span>
                         </div>
                       </div>
-                      <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-                        <div className="text-[9px] text-[#7E8799]">PROJ ENDURANCE 22km</div>
-                        <div className="text-[#ECEFF4]">
-                          {sensitivity.projEndurance.toFixed(1)} s (
-                          {sensitivity.deltaEndurance >= 0 ? "+" : ""}
-                          {sensitivity.deltaEndurance.toFixed(1)} s)
+
+                      <div className="machined-card px-3 py-2">
+                        <div className="text-[10px] text-[#94A3B8]">Projected Endurance</div>
+                        <div className="font-mono text-[11.5px] text-[#F1F5F9] tabular mt-0.5">
+                          {sensitivity.projEndurance.toFixed(1)} s{" "}
+                          <span className="text-[#94A3B8]">
+                            ({sensitivity.deltaEndurance >= 0 ? "+" : ""}
+                            {sensitivity.deltaEndurance.toFixed(1)}s)
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -538,13 +579,22 @@ export function TracksideSetupMatrix() {
 
       {/* 1-Page Printable Trackside Pit-Lane Setup Sheet */}
       <div className="print-only print-sheet">
-        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "6px", marginBottom: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            borderBottom: "2px solid #000",
+            paddingBottom: "6px",
+            marginBottom: "10px",
+          }}
+        >
           <div>
             <h1 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
               TECNUN eRACING // TeR27 4WD TRACKSIDE SETUP SHEET
             </h1>
             <div style={{ fontSize: "11px" }}>
-              Preset: {activeSetup.name} ({activeSetup.event.toUpperCase()}) — {activeSetup.description}
+              Preset: {activeSetup.name} ({activeSetup.event.toUpperCase()}) —{" "}
+              {activeSetup.description}
             </div>
           </div>
           <div style={{ textAlign: "right", fontSize: "10px" }}>

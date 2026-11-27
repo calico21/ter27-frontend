@@ -1,20 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --bg-canvas: #08090C;
-  --bg-panel: #0F1116;
-  --bg-secondary: #151820;
-  --bg-hover: #1B1F2A;
-  --border-structural: #222633;
-  --border-grid: #232836;
-  --text-primary: #ECEFF4;
-  --text-secondary: #7E8799;
+  --bg-canvas: #07080B;
+  --bg-well: #0B0D12;
+  --bg-panel: #11141B;
+  --bg-elevated: #161A23;
+  --bg-hover: #1D222E;
+  --border-hairline: rgba(255, 255, 255, 0.065);
+  --border-strong: rgba(255, 255, 255, 0.11);
+  --specular-top: inset 0 1px 0 rgba(255, 255, 255, 0.048);
+  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.28);
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
   --accent-gold: #C5A059;
+  --accent-gold-bright: #DFBE78;
   --accent-trace-b: #38BDF8;
   --signal-nominal: #10B981;
   --signal-caution: #D97706;
-  --signal-limit: #DC2626;
-  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --signal-limit: #EF4444;
+
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -36,7 +44,7 @@ body,
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -46,38 +54,140 @@ body,
 code,
 pre,
 input[type="number"],
-table td,
-table th {
+table td.num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Precision industrial scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Machined Surface Primitives */
+.machined-panel {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  box-shadow: var(--specular-top), 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
-::-webkit-scrollbar-track {
-  background: var(--bg-canvas);
+.machined-card {
+  background-color: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #232836;
-  border-radius: 0px;
+.machined-well {
+  background-color: var(--bg-well);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 5px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #343C52;
+.panel-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 6px 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0) 100%);
+  border-bottom: 1px solid var(--border-hairline);
+  user-select: none;
 }
 
-/* Precision range slider */
+.panel-title-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.panel-subtitle {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* Segmented Control Track & Active Thumb */
+.seg-track {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background-color: var(--bg-well);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.seg-btn {
+  padding: 3px 9px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.seg-btn:hover {
+  color: var(--text-primary);
+}
+
+.seg-btn[data-active="true"] {
+  background-color: #1E2432;
+  border-color: rgba(197, 160, 89, 0.32);
+  color: var(--accent-gold-bright);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Subtle Tinted Status Pills */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.status-pill-nominal {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #34D399;
+}
+
+.status-pill-gold {
+  background-color: rgba(197, 160, 89, 0.14);
+  color: #DFBE78;
+}
+
+.status-pill-caution {
+  background-color: rgba(217, 119, 6, 0.14);
+  color: #FBBF24;
+}
+
+.status-pill-limit {
+  background-color: rgba(239, 68, 68, 0.14);
+  color: #F87171;
+}
+
+.status-pill-muted {
+  background-color: rgba(148, 163, 184, 0.1);
+  color: #94A3B8;
+}
+
+/* Precision Custom Range Slider */
 input[type="range"].eng-slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 2px;
-  background: #232836;
+  height: 4px;
+  border-radius: 999px;
+  background: #1C212E;
   outline: none;
   cursor: pointer;
 }
@@ -85,83 +195,109 @@ input[type="range"].eng-slider {
 input[type="range"].eng-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 10px;
-  height: 14px;
-  background: #C5A059;
-  border: 1px solid #08090C;
-  border-radius: 1px;
+  width: 12px;
+  height: 12px;
+  background: #DFBE78;
+  border: 2px solid #0B0D12;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   cursor: ew-resize;
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+input[type="range"].eng-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+  background: #E9CD8E;
 }
 
 input[type="range"].eng-slider::-moz-range-thumb {
-  width: 10px;
-  height: 14px;
-  background: #C5A059;
-  border: 1px solid #08090C;
-  border-radius: 1px;
+  width: 12px;
+  height: 12px;
+  background: #DFBE78;
+  border: 2px solid #0B0D12;
+  border-radius: 999px;
   cursor: ew-resize;
 }
 
-/* Focus rings */
+/* Refined Scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.34);
+}
+
+/* Accessible Focus Rings */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 1px solid var(--accent-gold);
-  outline-offset: -1px;
+  outline: 1.5px solid rgba(197, 160, 89, 0.8);
+  outline-offset: 1px;
 }
 
-/* Structural hairline utilities */
-.panel-surface {
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-structural);
-  border-radius: 2px;
-}
-
-.panel-header-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
-  padding: 4px 10px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-structural);
-  user-select: none;
-}
-
-.panel-title-label {
-  font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
-
+/* Split-Pane Handles (clean recessed channel with active gold bar) */
 .split-handle-h {
-  width: 3px;
-  background-color: #222633;
+  width: 6px;
+  background-color: transparent;
   cursor: col-resize;
   flex-shrink: 0;
-  transition: background-color 120ms ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.split-handle-h:hover,
-.split-handle-h[data-dragging="true"] {
-  background-color: #C5A059;
+.split-handle-h::after {
+  content: "";
+  width: 2px;
+  height: 28px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: background-color 140ms ease, height 140ms ease;
+}
+
+.split-handle-h:hover::after,
+.split-handle-h[data-dragging="true"]::after {
+  background-color: var(--accent-gold);
+  height: 52px;
 }
 
 .split-handle-v {
-  height: 3px;
-  background-color: #222633;
+  height: 6px;
+  background-color: transparent;
   cursor: row-resize;
   flex-shrink: 0;
-  transition: background-color 120ms ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.split-handle-v:hover,
-.split-handle-v[data-dragging="true"] {
-  background-color: #C5A059;
+.split-handle-v::after {
+  content: "";
+  height: 2px;
+  width: 28px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: background-color 140ms ease, width 140ms ease;
+}
+
+.split-handle-v:hover::after,
+.split-handle-v[data-dragging="true"]::after {
+  background-color: var(--accent-gold);
+  width: 52px;
 }
 
 /* Print stylesheet: 1-Page Trackside Setup Sheet & Design Event Dossier */

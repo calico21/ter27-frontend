@@ -44,8 +44,8 @@ export function computeSectorBreakdown(
     let minVxA = Infinity;
     let peakAy = 0;
     let avgAx = 0;
-    let firstAy = Math.abs(segA[0].ay_g);
-    let lastAy = Math.abs(segA[segA.length - 1].ay_g);
+    const firstAy = Math.abs(segA[0].ay_g);
+    const lastAy = Math.abs(segA[segA.length - 1].ay_g);
 
     for (const p of segA) {
       if (p.vx_mps < minVxA) minVxA = p.vx_mps;
@@ -71,7 +71,7 @@ export function computeSectorBreakdown(
 
     rows.push({
       id: i + 1,
-      name: `S${i + 1} (${sStart.toFixed(0)}-${sEnd.toFixed(0)}m)`,
+      name: `S${i + 1} (${sStart.toFixed(0)}–${sEnd.toFixed(0)} m)`,
       phase,
       sStartM: sStart,
       sEndM: sEnd,
@@ -83,6 +83,19 @@ export function computeSectorBreakdown(
     });
   }
   return rows;
+}
+
+function phaseBadgeClass(phase: SectorMetricRow["phase"]): string {
+  switch (phase) {
+    case "Braking":
+      return "bg-[#EF4444]/12 text-[#F87171]";
+    case "Entry":
+      return "bg-[#38BDF8]/12 text-[#38BDF8]";
+    case "Exit":
+      return "bg-[#10B981]/12 text-[#34D399]";
+    default:
+      return "bg-[#C5A059]/14 text-[#DFBE78]";
+  }
 }
 
 export function SectorDeltaBreakdown({
@@ -121,91 +134,110 @@ export function SectorDeltaBreakdown({
 
   const renderSortIcon = (key: SortKey) => {
     if (sortKey !== key) return null;
-    return sortAsc ? <ArrowUp className="w-2.5 h-2.5 inline ml-1" /> : <ArrowDown className="w-2.5 h-2.5 inline ml-1" />;
+    return sortAsc ? (
+      <ArrowUp className="w-3 h-3 inline ml-1 text-[#DFBE78]" />
+    ) : (
+      <ArrowDown className="w-3 h-3 inline ml-1 text-[#DFBE78]" />
+    );
   };
 
   return (
-    <div className="flex flex-col w-full h-full min-h-0 bg-[#0F1116]">
+    <div className="machined-panel flex flex-col w-full h-full min-h-0 overflow-hidden">
       <div className="panel-header-bar">
-        <span className="panel-title-label">Sector &amp; Corner Phase Breakdown</span>
-        <span className="text-[10px] font-mono text-[#7E8799]">
-          CLICK ROW TO ZOOM SEGMENT
+        <div className="flex items-center gap-2">
+          <span className="panel-title-label">Sector &amp; Corner Phase Breakdown</span>
+          <span className="panel-subtitle">Click any row to isolate segment</span>
+        </div>
+        <span className="status-pill status-pill-muted font-mono text-[10px]">
+          {rows.length} Sectors
         </span>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
-        <table className="w-full border-collapse text-[11px] font-mono">
-          <thead className="sticky top-0 bg-[#151820] text-[#7E8799] border-b border-[#222633]">
+        <table className="w-full border-collapse text-[11.5px]">
+          <thead className="sticky top-0 bg-[#141822] text-[#94A3B8] border-b border-white/[0.06] z-10">
             <tr>
               <th
                 onClick={() => onHeaderClick("id")}
-                className="text-left px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
+                className="text-left px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
               >
-                SECTOR{renderSortIcon("id")}
+                Sector{renderSortIcon("id")}
               </th>
               <th
                 onClick={() => onHeaderClick("phase")}
-                className="text-left px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
+                className="text-left px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
               >
-                PHASE{renderSortIcon("phase")}
+                Phase{renderSortIcon("phase")}
               </th>
-              <th className="text-right px-2 py-1.5 font-medium">APEX A [km/h]</th>
-              <th className="text-right px-2 py-1.5 font-medium">APEX B [km/h]</th>
+              <th className="text-right px-3 py-2 font-medium">Apex A (km/h)</th>
+              <th className="text-right px-3 py-2 font-medium">Apex B (km/h)</th>
               <th
                 onClick={() => onHeaderClick("apexSpeedDeltaKmh")}
-                className="text-right px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
+                className="text-right px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
               >
-                dV APEX{renderSortIcon("apexSpeedDeltaKmh")}
+                ΔV Apex{renderSortIcon("apexSpeedDeltaKmh")}
               </th>
               <th
                 onClick={() => onHeaderClick("peakAyG")}
-                className="text-right px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
+                className="text-right px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
               >
-                PEAK |ay|{renderSortIcon("peakAyG")}
+                Peak |ay|{renderSortIcon("peakAyG")}
               </th>
               <th
                 onClick={() => onHeaderClick("deltaTimeS")}
-                className="text-right px-2 py-1.5 font-medium cursor-pointer hover:text-[#ECEFF4]"
+                className="text-right px-3 py-2 font-medium cursor-pointer hover:text-[#F1F5F9] transition-colors"
               >
-                SECTOR dt{renderSortIcon("deltaTimeS")}
+                Sector Δt{renderSortIcon("deltaTimeS")}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#222633]">
+          <tbody className="divide-y divide-white/[0.045]">
             {sorted.map((row) => {
               const faster = row.deltaTimeS <= 0;
               return (
                 <tr
                   key={row.id}
                   onClick={() => onSelectSectorRange(row.sStartM, row.sEndM)}
-                  className="hover:bg-[#1B1F2A] cursor-pointer transition-colors"
+                  className="hover:bg-[#1A202C] cursor-pointer transition-colors"
                 >
-                  <td className="px-2 py-1.5 text-[#ECEFF4]">{row.name}</td>
-                  <td className="px-2 py-1.5 text-[#7E8799]">{row.phase}</td>
-                  <td className="px-2 py-1.5 text-right text-[#ECEFF4]">
+                  <td className="px-3 py-2 font-mono text-[11px] text-[#F1F5F9] font-medium">
+                    {row.name}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${phaseBadgeClass(
+                        row.phase
+                      )}`}
+                    >
+                      {row.phase}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-[11px] text-[#F1F5F9] tabular">
                     {row.apexSpeedADriverKmh.toFixed(1)}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-[#38BDF8]">
+                  <td className="px-3 py-2 text-right font-mono text-[11px] text-[#38BDF8] tabular">
                     {row.apexSpeedBRefKmh.toFixed(1)}
                   </td>
                   <td
-                    className={`px-2 py-1.5 text-right ${
-                      row.apexSpeedDeltaKmh >= 0 ? "text-[#10B981]" : "text-[#D97706]"
+                    className={`px-3 py-2 text-right font-mono text-[11px] tabular ${
+                      row.apexSpeedDeltaKmh >= 0 ? "text-[#34D399]" : "text-[#FBBF24]"
                     }`}
                   >
                     {row.apexSpeedDeltaKmh >= 0 ? "+" : ""}
                     {row.apexSpeedDeltaKmh.toFixed(2)}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-[#C5A059]">
+                  <td className="px-3 py-2 text-right font-mono text-[11px] text-[#DFBE78] tabular">
                     {row.peakAyG.toFixed(2)} g
                   </td>
-                  <td
-                    className={`px-2 py-1.5 text-right font-semibold ${
-                      faster ? "text-[#10B981]" : "text-[#DC2626]"
-                    }`}
-                  >
-                    {row.deltaTimeS >= 0 ? "+" : ""}
-                    {row.deltaTimeS.toFixed(3)} s
+                  <td className="px-3 py-2 text-right">
+                    <span
+                      className={`status-pill font-mono text-[10.5px] tabular ${
+                        faster ? "status-pill-nominal" : "status-pill-limit"
+                      }`}
+                    >
+                      {row.deltaTimeS >= 0 ? "+" : ""}
+                      {row.deltaTimeS.toFixed(3)} s
+                    </span>
                   </td>
                 </tr>
               );

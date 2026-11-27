@@ -51,7 +51,6 @@ const EXAMPLE_TEMPLATE = `{
 
 function computeRollCenterHeightMm(corner: CornerHardpoints3D): number | null {
   if (!hasNonZeroHardpoints(corner)) return null;
-  // 2D front-view (Y, Z) intersection of UCA and LCA lines
   const lcaInY = 0.5 * (corner.lca_front[1] + corner.lca_rear[1]);
   const lcaInZ = 0.5 * (corner.lca_front[2] + corner.lca_rear[2]);
   const ucaInY = 0.5 * (corner.uca_front[1] + corner.uca_rear[1]);
@@ -72,7 +71,6 @@ function computeRollCenterHeightMm(corner: CornerHardpoints3D): number | null {
   const icY = ((y1 * z2 - z1 * y2) * (y3 - y4) - (y1 - y2) * (y3 * z4 - z3 * y4)) / denom;
   const icZ = ((y1 * z2 - z1 * y2) * (z3 - z4) - (z1 - z2) * (y3 * z4 - z3 * y4)) / denom;
 
-  // Line from contact patch (cpY, cpZ) through IC (icY, icZ) to centerline Y = 0
   const cpY = corner.contact_patch[1];
   const cpZ = corner.contact_patch[2];
   if (Math.abs(icY - cpY) < 1e-6) return null;
@@ -100,19 +98,19 @@ export function SuspensionKinematicsOverlay({
   const rrTravelMm = frame.wheels.rr.wheel_travel_m * 1000;
 
   const heaveMm = (flTravelMm + frTravelMm + rlTravelMm + rrTravelMm) / 4;
-  const rollDeg = frame.state.ay_g * 0.80; // Confirmed 0.80 deg/g roll gradient
+  const rollDeg = frame.state.ay_g * 0.8;
   const pitchDeg = frame.state.ax_g * 0.52;
 
   const frontRcMm = computeRollCenterHeightMm(suspension.front_left_hardpoints);
   const rearRcMm = computeRollCenterHeightMm(suspension.rear_left_hardpoints);
 
-  // Draw live camber-gain curve on Canvas
+  // Polished Camber Gain Canvas
   useEffect(() => {
     const canvas = camberCanvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = canvas.clientWidth || 240;
-    const h = canvas.clientHeight || 110;
+    const w = canvas.clientWidth || 260;
+    const h = canvas.clientHeight || 124;
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     const ctx = canvas.getContext("2d");
@@ -120,13 +118,13 @@ export function SuspensionKinematicsOverlay({
 
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#08090C";
+    ctx.fillStyle = "#0B0D12";
     ctx.fillRect(0, 0, w, h);
 
     const padL = 34,
-      padR = 10,
-      padT = 10,
-      padB = 20;
+      padR = 12,
+      padT = 12,
+      padB = 22;
     const pw = w - padL - padR;
     const ph = h - padT - padB;
 
@@ -138,58 +136,85 @@ export function SuspensionKinematicsOverlay({
     const xOf = (t: number) => padL + ((t - minT) / (maxT - minT)) * pw;
     const yOf = (c: number) => padT + ph - ((c - minC) / (maxC - minC)) * ph;
 
-    // Grid
-    ctx.strokeStyle = "#181C26";
-    ctx.lineWidth = 1;
-    ctx.font = '9px "JetBrains Mono", monospace';
-    ctx.fillStyle = "#7E8799";
+    ctx.font = '9.5px "JetBrains Mono", monospace';
     for (const c of [-4, -3, -2, -1, 0]) {
       const py = yOf(c);
+      ctx.save();
+      ctx.strokeStyle = c === 0 ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.045)";
+      if (c !== 0) ctx.setLineDash([3, 4]);
       ctx.beginPath();
       ctx.moveTo(padL, Math.round(py) + 0.5);
       ctx.lineTo(w - padR, Math.round(py) + 0.5);
       ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = "#64748B";
       ctx.textAlign = "right";
-      ctx.fillText(`${c.toFixed(0)}`, padL - 4, py + 3);
+      ctx.fillText(`${c}°`, padL - 6, py + 3);
     }
+
     const zeroX = xOf(0);
-    ctx.strokeStyle = "#232836";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
     ctx.beginPath();
     ctx.moveTo(Math.round(zeroX) + 0.5, padT);
     ctx.lineTo(Math.round(zeroX) + 0.5, padT + ph);
     ctx.stroke();
 
-    // Front & rear camber gain curves (static camber + SLA bump camber gain ~ -0.028 deg/mm)
-    const drawCurve = (staticCam: number, slope: number, color: string) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
+    const drawCurve = (staticCam: number, slope: number, color: string, fill = false) => {
+      const pts: Array<[number, number]> = [];
       for (let t = minT; t <= maxT; t += 2) {
         const cam = staticCam - slope * t - 0.00018 * t * t;
-        const px = xOf(t);
-        const py = yOf(Math.max(minC, Math.min(maxC, cam)));
-        if (t === minT) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+        pts.push([xOf(t), yOf(Math.max(minC, Math.min(maxC, cam)))]);
       }
+      if (fill && pts.length > 1) {
+        ctx.save();
+        const grad = ctx.createLinearGradient(0, padT, 0, padT + ph);
+        grad.addColorStop(0, "rgba(197, 160, 89, 0.16)");
+        grad.addColorStop(1, "rgba(197, 160, 89, 0.0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], padT + ph);
+        for (const [px, py] of pts) ctx.lineTo(px, py);
+        ctx.lineTo(pts[pts.length - 1][0], padT + ph);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.8;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
       ctx.stroke();
     };
 
-    drawCurve(suspension.static_camber_front_deg, 0.029, "#C5A059");
-    drawCurve(suspension.static_camber_rear_deg, 0.024, "#38BDF8");
+    drawCurve(suspension.static_camber_front_deg, 0.029, "#DFBE78", true);
+    drawCurve(suspension.static_camber_rear_deg, 0.024, "#38BDF8", false);
 
     // Live FL operating point
     const liveX = xOf(Math.max(minT, Math.min(maxT, flTravelMm)));
     const liveY = yOf(Math.max(minC, Math.min(maxC, frame.wheels.fl.camber_deg)));
-    ctx.fillStyle = "#ECEFF4";
+    ctx.strokeStyle = "#DFBE78";
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(liveX, liveY, 3, 0, Math.PI * 2);
+    ctx.arc(liveX, liveY, 5.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#F1F5F9";
+    ctx.beginPath();
+    ctx.arc(liveX, liveY, 2.8, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.textAlign = "center";
-    ctx.fillStyle = "#7E8799";
-    ctx.fillText("Travel [mm] (-30 droop / +30 bump)", padL + pw / 2, h - 5);
+    ctx.fillStyle = "#64748B";
+    ctx.fillText("Wheel Travel (mm) · -30 Droop to +30 Bump", padL + pw / 2, h - 6);
     ctx.restore();
-  }, [flTravelMm, frame.wheels.fl.camber_deg, suspension.static_camber_front_deg, suspension.static_camber_rear_deg]);
+  }, [
+    flTravelMm,
+    frame.wheels.fl.camber_deg,
+    suspension.static_camber_front_deg,
+    suspension.static_camber_rear_deg,
+  ]);
 
   const handleApplyJson = async () => {
     setParseError(null);
@@ -221,52 +246,54 @@ export function SuspensionKinematicsOverlay({
   ];
 
   return (
-    <div className="w-full h-full min-h-0 flex flex-col bg-[#0F1116] overflow-y-auto">
+    <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden">
       <div className="panel-header-bar">
-        <span className="panel-title-label">Kinematics Telemetry Inspector</span>
-        <span className="text-[10px] font-mono text-[#7E8799]">{suspension.frame}</span>
+        <span className="panel-title-label">Kinematics Inspector</span>
+        <span className="status-pill status-pill-muted font-mono text-[10px]">
+          {suspension.frame}
+        </span>
       </div>
 
-      <div className="p-2.5 space-y-3 text-[11px]">
-        {/* Hardpoint Source Status & Zero-Fabrication Notice */}
-        <div
-          className={`p-2 border rounded-[2px] font-mono text-[10px] ${
-            hardpointsLoaded
-              ? "bg-[#151820] border-[#10B981]/60"
-              : "bg-[#151820] border-[#D97706]/70"
-          }`}
-        >
+      <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-4 text-[11.5px]">
+        {/* Hardpoint Source Provenance Card */}
+        <div className="machined-card p-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className={hardpointsLoaded ? "text-[#10B981] font-semibold" : "text-[#D97706] font-semibold"}>
-              {hardpointsLoaded ? "CONFIRMED 3D HARDPOINTS ACTIVE" : "OFFLINE HARDPOINTS UNLOADED"}
+            <span
+              className={`status-pill text-[10.5px] ${
+                hardpointsLoaded ? "status-pill-nominal" : "status-pill-caution"
+              }`}
+            >
+              {hardpointsLoaded ? "Confirmed Hardpoints" : "Hardpoints Unloaded"}
             </span>
             <button
               type="button"
               onClick={() => setImportOpen((o) => !o)}
-              className="flex items-center gap-1 px-1.5 py-0.5 bg-[#08090C] border border-[#222633] hover:border-[#C5A059] text-[#ECEFF4] rounded-[2px] cursor-pointer"
+              className="flex items-center gap-1.5 h-[26px] px-2.5 rounded-[5px] bg-[#0B0D12] border border-white/[0.08] hover:border-[#C5A059]/45 text-[11px] font-medium text-[#E2E8F0] hover:text-[#DFBE78] cursor-pointer transition-colors"
             >
-              <Upload className="w-2.5 h-2.5 text-[#C5A059]" />
+              <Upload className="w-3 h-3 text-[#DFBE78]" />
               Import JSON
             </button>
           </div>
-          <p className="text-[#7E8799] mt-1 leading-snug">
+          <p className="text-[11px] text-[#94A3B8] m-0 leading-relaxed">
             {hardpointsLoaded
-              ? "Rendering exact double-wishbone, pushrod, rocker, damper, and ARB geometry in ISO 8855."
+              ? "Rendering verified double-wishbone, pushrod, rocker, damper, and ARB geometry in ISO 8855."
               : "Zero synthetic wishbone coordinates fabricated. Connect FastAPI :8000 or import confirmed ISO 8855 hardpoints JSON."}
           </p>
         </div>
 
         {/* Inline Confirmed Hardpoints Importer */}
         {importOpen ? (
-          <div className="p-2 bg-[#08090C] border border-[#C5A059] rounded-[2px] space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] font-mono">
-              <span className="text-[#C5A059]">PASTE CONFIRMED CornerHardpoints3D JSON</span>
+          <div className="machined-well p-3 border-[#C5A059]/45 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[#DFBE78]">
+                Paste Confirmed CornerHardpoints3D JSON
+              </span>
               <button
                 type="button"
                 onClick={() => setImportOpen(false)}
-                className="text-[#7E8799] hover:text-[#ECEFF4] cursor-pointer"
+                className="text-[#94A3B8] hover:text-[#F1F5F9] cursor-pointer"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
             <textarea
@@ -274,10 +301,10 @@ export function SuspensionKinematicsOverlay({
               value={jsonInput}
               onChange={(e) => setJsonInput(e.target.value)}
               placeholder={EXAMPLE_TEMPLATE}
-              className="w-full bg-[#0F1116] border border-[#222633] p-1.5 font-mono text-[10px] text-[#ECEFF4] outline-none resize-y"
+              className="w-full bg-[#11141B] border border-white/[0.08] rounded-[5px] p-2 font-mono text-[10px] text-[#F1F5F9] outline-none resize-y focus:border-[#C5A059]/60"
             />
             {parseError ? (
-              <div className="text-[10px] font-mono text-[#DC2626]">{parseError}</div>
+              <div className="text-[10.5px] text-[#F87171]">{parseError}</div>
             ) : null}
             <div className="flex items-center justify-between gap-2">
               {hardpointsLoaded ? (
@@ -287,7 +314,7 @@ export function SuspensionKinematicsOverlay({
                     void onImportHardpoints(null);
                     setImportOpen(false);
                   }}
-                  className="px-2 py-1 text-[10px] font-mono border border-[#222633] text-[#7E8799] hover:text-[#DC2626] cursor-pointer"
+                  className="px-2.5 py-1 text-[11px] rounded-[5px] border border-white/[0.08] text-[#94A3B8] hover:text-[#F87171] cursor-pointer"
                 >
                   Clear Local Override
                 </button>
@@ -297,7 +324,7 @@ export function SuspensionKinematicsOverlay({
               <button
                 type="button"
                 onClick={() => void handleApplyJson()}
-                className="px-2.5 py-1 text-[10px] font-mono bg-[#C5A059] text-[#08090C] font-semibold rounded-[2px] cursor-pointer"
+                className="px-3 py-1 text-[11px] rounded-[5px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] font-semibold cursor-pointer transition-colors"
               >
                 Validate &amp; Load
               </button>
@@ -305,12 +332,119 @@ export function SuspensionKinematicsOverlay({
           </div>
         ) : null}
 
-        {/* Physics Layer Visibility Toggles */}
-        <div className="space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#7E8799]">
-            3D Physics Overlays
+        {/* Live Sprung Attitude */}
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-semibold text-[#CBD5E1]">Sprung Mass Attitude</div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="machined-card px-2.5 py-2">
+              <div className="text-[10px] text-[#94A3B8]">Heave</div>
+              <div className="font-mono text-[12px] font-semibold text-[#F1F5F9] tabular mt-0.5">
+                {heaveMm >= 0 ? "+" : ""}
+                {heaveMm.toFixed(1)} mm
+              </div>
+            </div>
+            <div className="machined-card px-2.5 py-2">
+              <div className="text-[10px] text-[#94A3B8]">Roll (est)</div>
+              <div className="font-mono text-[12px] font-semibold text-[#DFBE78] tabular mt-0.5">
+                {rollDeg >= 0 ? "+" : ""}
+                {rollDeg.toFixed(2)}°
+              </div>
+            </div>
+            <div className="machined-card px-2.5 py-2">
+              <div className="text-[10px] text-[#94A3B8]">Pitch (est)</div>
+              <div className="font-mono text-[12px] font-semibold text-[#38BDF8] tabular mt-0.5">
+                {pitchDeg >= 0 ? "+" : ""}
+                {pitchDeg.toFixed(2)}°
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-1 font-mono text-[10px]">
+        </div>
+
+        {/* Roll Centers & Anti-Geometry */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="machined-card px-2.5 py-2">
+            <div className="text-[10px] text-[#94A3B8]">Front RC Height</div>
+            <div className="font-mono text-[12px] font-semibold text-[#F1F5F9] tabular mt-0.5">
+              {frontRcMm !== null ? `${frontRcMm.toFixed(1)} mm` : "Awaiting HP"}
+            </div>
+          </div>
+          <div className="machined-card px-2.5 py-2">
+            <div className="text-[10px] text-[#94A3B8]">Rear RC Height</div>
+            <div className="font-mono text-[12px] font-semibold text-[#F1F5F9] tabular mt-0.5">
+              {rearRcMm !== null ? `${rearRcMm.toFixed(1)} mm` : "Awaiting HP"}
+            </div>
+          </div>
+          <div className="machined-card px-2.5 py-2">
+            <div className="text-[10px] text-[#94A3B8]">Front Anti-Dive</div>
+            <div className="font-mono text-[12px] font-semibold text-[#DFBE78] tabular mt-0.5">
+              {(suspension.anti_dive_front * 100).toFixed(1)}%
+            </div>
+          </div>
+          <div className="machined-card px-2.5 py-2">
+            <div className="text-[10px] text-[#94A3B8]">Rear Anti-Squat</div>
+            <div className="font-mono text-[12px] font-semibold text-[#38BDF8] tabular mt-0.5">
+              {(suspension.anti_squat_rear * 100).toFixed(1)}%
+            </div>
+          </div>
+        </div>
+
+        {/* Wheel Travel Gauges */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-[#CBD5E1]">Wheel Travel Gauges</span>
+            <span className="font-mono text-[10px] text-[#64748B]">±30 mm</span>
+          </div>
+          <div className="space-y-2">
+            {gauges.map((g) => {
+              const pct = Math.max(0, Math.min(100, ((g.mm + 30) / 60) * 100));
+              return (
+                <div key={g.id} className="space-y-1">
+                  <div className="flex justify-between text-[10.5px]">
+                    <span className="text-[#E2E8F0] font-medium">
+                      {g.id}{" "}
+                      <span className="font-mono text-[10px] text-[#94A3B8]">
+                        cam {g.cam.toFixed(2)}°
+                      </span>
+                    </span>
+                    <span className="font-mono text-[#DFBE78] tabular">
+                      {g.mm >= 0 ? "+" : ""}
+                      {g.mm.toFixed(1)} mm
+                    </span>
+                  </div>
+                  <div className="relative h-1.5 rounded-full bg-[#0B0D12] overflow-hidden">
+                    <div
+                      className="absolute top-0 bottom-0 rounded-full bg-[#C5A059]"
+                      style={{
+                        left: g.mm >= 0 ? "50%" : `${pct}%`,
+                        width: `${Math.abs(pct - 50)}%`,
+                      }}
+                    />
+                    <div className="absolute left-1/2 top-0 bottom-0 w-[1.5px] bg-white/30" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Camber Gain Curve */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-[#CBD5E1]">Camber Gain Curve</span>
+            <span className="text-[10.5px] text-[#94A3B8]">
+              <span className="text-[#DFBE78]">Front</span> ·{" "}
+              <span className="text-[#38BDF8]">Rear</span>
+            </span>
+          </div>
+          <div className="machined-well h-[126px] overflow-hidden">
+            <canvas ref={camberCanvasRef} className="block w-full h-full" />
+          </div>
+        </div>
+
+        {/* Physics Layer Checklist */}
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-semibold text-[#CBD5E1]">3D Physics Overlays</div>
+          <div className="space-y-1">
             {(
               [
                 { key: "forceVectors", label: "Contact Patch Force Vectors (Fx, Fy, Fz)" },
@@ -318,16 +452,16 @@ export function SuspensionKinematicsOverlay({
                 { key: "rollCenterLines", label: "Dynamic IC & Roll Center Axis" },
                 {
                   key: "antiGeometryPlanes",
-                  label: `Anti-Dive (${(suspension.anti_dive_front * 100).toFixed(1)}%) / Anti-Squat (${(suspension.anti_squat_rear * 100).toFixed(1)}%)`,
+                  label: `Anti-Dive (${(suspension.anti_dive_front * 100).toFixed(1)}%) & Anti-Squat (${(suspension.anti_squat_rear * 100).toFixed(1)}%)`,
                 },
                 { key: "wireframeChassis", label: "Monocoque Chassis Wireframe" },
               ] as const
             ).map((item) => (
               <label
                 key={item.key}
-                className="flex items-center justify-between px-2 py-1 bg-[#151820] border border-[#222633] cursor-pointer hover:bg-[#1B1F2A]"
+                className="machined-card flex items-center justify-between px-2.5 py-1.5 cursor-pointer hover:bg-[#1C2230] transition-colors text-[11px]"
               >
-                <span className="text-[#ECEFF4]">{item.label}</span>
+                <span className="text-[#E2E8F0]">{item.label}</span>
                 <input
                   type="checkbox"
                   checked={layers[item.key]}
@@ -339,126 +473,24 @@ export function SuspensionKinematicsOverlay({
           </div>
         </div>
 
-        {/* Live Chassis Attitude */}
-        <div className="grid grid-cols-3 gap-1.5 font-mono text-[10px]">
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">HEAVE</div>
-            <div className="text-[#ECEFF4] font-semibold">
-              {heaveMm >= 0 ? "+" : ""}
-              {heaveMm.toFixed(1)} mm
-            </div>
-          </div>
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">ROLL (est)</div>
-            <div className="text-[#C5A059] font-semibold">
-              {rollDeg >= 0 ? "+" : ""}
-              {rollDeg.toFixed(2)} deg
-            </div>
-          </div>
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">PITCH (est)</div>
-            <div className="text-[#38BDF8] font-semibold">
-              {pitchDeg >= 0 ? "+" : ""}
-              {pitchDeg.toFixed(2)} deg
-            </div>
-          </div>
-        </div>
-
-        {/* Roll Center & Anti-Geometry Readouts */}
-        <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">FRONT RC HEIGHT</div>
-            <div className="text-[#ECEFF4] font-semibold">
-              {frontRcMm !== null ? `${frontRcMm.toFixed(1)} mm` : "Awaiting HP"}
-            </div>
-          </div>
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">REAR RC HEIGHT</div>
-            <div className="text-[#ECEFF4] font-semibold">
-              {rearRcMm !== null ? `${rearRcMm.toFixed(1)} mm` : "Awaiting HP"}
-            </div>
-          </div>
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">ANTI-DIVE (FRONT)</div>
-            <div className="text-[#C5A059] font-semibold">
-              {(suspension.anti_dive_front * 100).toFixed(1)} %
-            </div>
-          </div>
-          <div className="bg-[#151820] border border-[#222633] px-2 py-1">
-            <div className="text-[9px] text-[#7E8799]">ANTI-SQUAT (REAR)</div>
-            <div className="text-[#38BDF8] font-semibold">
-              {(suspension.anti_squat_rear * 100).toFixed(1)} %
-            </div>
-          </div>
-        </div>
-
-        {/* 4-Corner Wheel Travel Gauges */}
-        <div className="space-y-1.5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#7E8799]">
-            Wheel Travel Gauges (+/- 30 mm)
-          </div>
-          {gauges.map((g) => {
-            const pct = Math.max(0, Math.min(100, ((g.mm + 30) / 60) * 100));
-            return (
-              <div key={g.id} className="font-mono text-[10px]">
-                <div className="flex justify-between text-[#ECEFF4]">
-                  <span>
-                    {g.id} <span className="text-[#7E8799]">cam {g.cam.toFixed(2)} deg</span>
-                  </span>
-                  <span className="text-[#C5A059]">
-                    {g.mm >= 0 ? "+" : ""}
-                    {g.mm.toFixed(1)} mm
-                  </span>
-                </div>
-                <div className="relative h-1.5 bg-[#08090C] border border-[#222633] mt-0.5">
-                  <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-[#232836]" />
-                  <div
-                    className="absolute top-0 bottom-0 bg-[#C5A059]"
-                    style={{
-                      left: g.mm >= 0 ? "50%" : `${pct}%`,
-                      width: `${Math.abs(pct - 50)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Camber Gain Curve */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-[10px]">
-            <span className="font-semibold uppercase tracking-[0.06em] text-[#7E8799]">
-              Camber Gain Curve
-            </span>
-            <span className="font-mono text-[#7E8799]">
-              <span className="text-[#C5A059]">Front</span> /{" "}
-              <span className="text-[#38BDF8]">Rear</span>
-            </span>
-          </div>
-          <div className="h-[115px] border border-[#222633] bg-[#08090C]">
-            <canvas ref={camberCanvasRef} className="block w-full h-full" />
-          </div>
-        </div>
-
-        {/* Suspension Rates Summary */}
-        <div className="border-t border-[#222633] pt-2 grid grid-cols-2 gap-y-1 font-mono text-[10px]">
-          <span className="text-[#7E8799]">Spring F / R</span>
-          <span className="text-right text-[#ECEFF4]">
+        {/* Suspension Rates Specification Table */}
+        <div className="pt-3 border-t border-white/[0.06] grid grid-cols-2 gap-y-1.5 text-[11px]">
+          <span className="text-[#94A3B8]">Spring Rates (F / R)</span>
+          <span className="text-right font-mono text-[#F1F5F9] tabular">
             {(suspension.spring_stiffness_front_n_m / 1000).toFixed(0)} /{" "}
             {(suspension.spring_stiffness_rear_n_m / 1000).toFixed(0)} N/mm
           </span>
-          <span className="text-[#7E8799]">Motion Ratio F / R</span>
-          <span className="text-right text-[#ECEFF4]">
+          <span className="text-[#94A3B8]">Motion Ratios (F / R)</span>
+          <span className="text-right font-mono text-[#F1F5F9] tabular">
             {suspension.motion_ratio_front.toFixed(2)} / {suspension.motion_ratio_rear.toFixed(2)}
           </span>
-          <span className="text-[#7E8799]">Caster / KPI</span>
-          <span className="text-right text-[#ECEFF4]">
-            {suspension.caster_deg.toFixed(1)} / {suspension.kpi_deg.toFixed(1)} deg
+          <span className="text-[#94A3B8]">Caster / KPI</span>
+          <span className="text-right font-mono text-[#F1F5F9] tabular">
+            {suspension.caster_deg.toFixed(1)}° / {suspension.kpi_deg.toFixed(1)}°
           </span>
-          <span className="text-[#7E8799]">Elastic LLTD (F)</span>
-          <span className="text-right text-[#C5A059]">
-            {(suspension.lltd_elastic_front * 100).toFixed(1)} %
+          <span className="text-[#94A3B8]">Elastic Front LLTD</span>
+          <span className="text-right font-mono font-semibold text-[#DFBE78] tabular">
+            {(suspension.lltd_elastic_front * 100).toFixed(1)}%
           </span>
         </div>
       </div>

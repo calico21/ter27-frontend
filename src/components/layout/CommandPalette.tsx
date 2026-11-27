@@ -28,7 +28,6 @@ export function CommandPalette() {
     setActiveRoute,
     sensorProfile,
     setSensorProfile,
-    gripProfile,
     setGripProfile,
     forceOfflineMode,
     setForceOfflineMode,
@@ -54,7 +53,7 @@ export function CommandPalette() {
   const actions = useMemo<PaletteAction[]>(() => {
     const routeActions: PaletteAction[] = WORKBENCH_ROUTES.map((r, idx) => ({
       id: `route-${r.id}`,
-      category: "WORKSPACE",
+      category: "Workspace",
       label: r.label,
       detail: r.description,
       shortcut: `${idx + 1}`,
@@ -63,7 +62,7 @@ export function CommandPalette() {
 
     const setupActions: PaletteAction[] = PRESET_NAMES.map((preset) => ({
       id: `setup-${preset.id}`,
-      category: "SETUP PRESET",
+      category: "Setup Preset",
       label: `Apply Setup: ${preset.label}`,
       detail: preset.detail,
       run: async () => {
@@ -80,11 +79,11 @@ export function CommandPalette() {
     const systemActions: PaletteAction[] = [
       {
         id: "sensor-toggle",
-        category: "CONTROL & SENSORS",
+        category: "Sensors",
         label:
           sensorProfile === "SENSOR_TRACK_REALISM"
-            ? "Switch to SENSOR_IDEAL (0 ms)"
-            : "Switch to SENSOR_TRACK_REALISM (125 ms CAN + EKF)",
+            ? "Switch to Ideal Sensors (0 ms)"
+            : "Switch to Track Realism (125 ms CAN + EKF)",
         detail: "Toggle MirenaSim / offline synthesizer sensor realism profile",
         run: () =>
           setSensorProfile(
@@ -93,21 +92,21 @@ export function CommandPalette() {
       },
       {
         id: "grip-fsg",
-        category: "GRIP PROFILE",
-        label: "Grip Profile: FSG_RUBBERED (lambda_muy = 0.57)",
+        category: "Grip Profile",
+        label: "FSG Rubbered Asphalt (lambda_muy = 0.57)",
         detail: "Competition rubbered asphalt surface calibration",
         run: () => setGripProfile("FSG_RUBBERED"),
       },
       {
         id: "grip-cold",
-        category: "GRIP PROFILE",
-        label: "Grip Profile: COLD_TEST_OCT (lambda_muy = 0.47)",
-        detail: "Cold October track surface calibration (18 C ambient)",
+        category: "Grip Profile",
+        label: "Cold October Track (lambda_muy = 0.47)",
+        detail: "Cold test track surface calibration (18 C ambient)",
         run: () => setGripProfile("COLD_TEST_OCT"),
       },
       {
         id: "playback-toggle",
-        category: "TELEMETRY",
+        category: "Telemetry",
         label: isPlaying ? "Pause Telemetry Stream" : "Resume Telemetry Stream",
         detail: "Freeze or resume live / offline 60 Hz ingestion",
         shortcut: "Space",
@@ -115,7 +114,7 @@ export function CommandPalette() {
       },
       {
         id: "backend-mode",
-        category: "TRANSPORT",
+        category: "Transport",
         label: forceOfflineMode
           ? "Connect Live Backend (localhost:8000)"
           : "Switch to Offline Mock Playback Engine",
@@ -129,16 +128,16 @@ export function CommandPalette() {
             setForceOfflineMode(true);
             pushToast({
               level: "info",
-              title: "Offline Mock Engine Enabled",
-              detail: "Synthesizing continuous 60 Hz frames from verified mock_data.",
+              title: "Offline Playback Active",
+              detail: "Synthesizing continuous 60 Hz frames from verified mock datasets.",
             });
           }
         },
       },
       {
         id: "session-forensics-skidpad",
-        category: "DIL SESSION",
-        label: "Load Session: Skidpad 14-DOF Godot Parity vs CasADi",
+        category: "DiL Session",
+        label: "Load Skidpad 14-DOF Godot Parity vs CasADi",
         detail: "Jump to Session Forensics with verified FSG_RUBBERED comparison",
         run: () => setActiveRoute("forensics"),
       },
@@ -147,7 +146,6 @@ export function CommandPalette() {
     return [...routeActions, ...setupActions, ...systemActions];
   }, [
     forceOfflineMode,
-    gripProfile,
     isPlaying,
     pushToast,
     retryConnection,
@@ -184,14 +182,14 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] bg-black/70 no-print"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] bg-black/72 no-print"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setCommandPaletteOpen(false);
       }}
     >
-      <div className="w-[620px] max-w-[92vw] bg-[#0F1116] border border-[#222633] rounded-[2px] overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#222633] bg-[#151820]">
-          <Search className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+      <div className="w-[620px] max-w-[92vw] bg-[#131720] border border-white/[0.1] rounded-[8px] overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
+        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-white/[0.07] bg-[#171C27]">
+          <Search className="w-4 h-4 text-[#C5A059] shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -212,16 +210,18 @@ export function CommandPalette() {
                 setCommandPaletteOpen(false);
               }
             }}
-            placeholder="Type workspace, setup preset, sensor profile, or command..."
-            className="w-full bg-transparent text-[#ECEFF4] text-[12px] font-mono outline-none placeholder:text-[#7E8799]"
+            placeholder="Jump to workspace, apply setup preset, or toggle sensor profile..."
+            className="w-full bg-transparent text-[#F1F5F9] text-[13px] outline-none placeholder:text-[#64748B]"
           />
-          <span className="text-[10px] font-mono text-[#7E8799] shrink-0">ESC</span>
+          <kbd className="text-[10px] font-mono text-[#94A3B8] bg-[#0B0D12] border border-white/[0.08] px-1.5 py-0.5 rounded-[4px] shrink-0">
+            Esc
+          </kbd>
         </div>
 
-        <div className="max-h-[380px] overflow-y-auto divide-y divide-[#222633]/60">
+        <div className="max-h-[380px] overflow-y-auto p-1.5 space-y-0.5">
           {filtered.length === 0 ? (
-            <div className="px-3 py-6 text-center text-[11px] font-mono text-[#7E8799]">
-              No matching engineering commands.
+            <div className="px-4 py-8 text-center text-[12px] text-[#64748B]">
+              No matching commands found.
             </div>
           ) : (
             filtered.map((item, idx) => {
@@ -232,31 +232,31 @@ export function CommandPalette() {
                   type="button"
                   onMouseEnter={() => setSelectedIdx(idx)}
                   onClick={() => execute(item)}
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
-                    active ? "bg-[#1B1F2A]" : "bg-[#0F1116]"
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-[5px] text-left transition-colors cursor-pointer ${
+                    active ? "bg-[#1F2534]" : "bg-transparent"
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-mono uppercase tracking-[0.06em] text-[#7E8799] w-[112px] shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[10px] font-medium text-[#64748B] w-[86px] shrink-0">
                         {item.category}
                       </span>
                       <span
-                        className={`text-[12px] truncate ${
-                          active ? "text-[#C5A059] font-medium" : "text-[#ECEFF4]"
+                        className={`text-[12.5px] font-medium truncate ${
+                          active ? "text-[#DFBE78]" : "text-[#F1F5F9]"
                         }`}
                       >
                         {item.label}
                       </span>
                     </div>
-                    <div className="pl-[120px] text-[10px] text-[#7E8799] truncate">
+                    <div className="pl-[96px] text-[11px] text-[#64748B] truncate mt-0.5">
                       {item.detail}
                     </div>
                   </div>
                   {item.shortcut ? (
-                    <span className="text-[10px] font-mono text-[#7E8799] border border-[#222633] px-1.5 py-0.5 shrink-0">
+                    <kbd className="text-[10px] font-mono text-[#94A3B8] bg-[#0B0D12] border border-white/[0.08] px-1.5 py-0.5 rounded-[4px] shrink-0">
                       {item.shortcut}
-                    </span>
+                    </kbd>
                   ) : null}
                 </button>
               );
@@ -264,12 +264,12 @@ export function CommandPalette() {
           )}
         </div>
 
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#151820] border-t border-[#222633] text-[10px] font-mono text-[#7E8799]">
+        <div className="flex items-center justify-between px-4 py-2 bg-[#0F1219] border-t border-white/[0.06] text-[11px] text-[#64748B]">
           <span className="flex items-center gap-1.5">
-            <Terminal className="w-3 h-3 text-[#7E8799]" />
-            Arrows navigate / Enter execute
+            <Terminal className="w-3.5 h-3.5" />
+            Use arrow keys to navigate, Enter to execute
           </span>
-          <span>TeR27 4WD Command Bus</span>
+          <span className="font-mono text-[10px]">TeR27 Command Bus</span>
         </div>
       </div>
     </div>

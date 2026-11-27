@@ -21,14 +21,14 @@ type CameraPresetId = "ISO" | "FRONT" | "REAR" | "TOP" | "SIDE" | "FL_CORNER";
 
 const CAMERA_PRESETS: Record<
   CameraPresetId,
-  { pos: [number, number, number]; target: [number, number, number] }
+  { label: string; pos: [number, number, number]; target: [number, number, number] }
 > = {
-  ISO: { pos: [2.25, 1.35, 1.95], target: [0.0, 0.28, 0.0] },
-  FRONT: { pos: [2.5, 0.42, 0.0], target: [0.2, 0.25, 0.0] },
-  REAR: { pos: [-2.5, 0.48, 0.0], target: [-0.2, 0.25, 0.0] },
-  TOP: { pos: [0.01, 3.2, 0.01], target: [0.0, 0.15, 0.0] },
-  SIDE: { pos: [0.0, 0.52, 2.75], target: [0.0, 0.28, 0.0] },
-  FL_CORNER: { pos: [1.55, 0.56, -1.28], target: [0.74, 0.22, -0.52] },
+  ISO: { label: "ISO", pos: [2.28, 1.32, 1.98], target: [0.0, 0.28, 0.0] },
+  FRONT: { label: "Front", pos: [2.5, 0.42, 0.0], target: [0.2, 0.25, 0.0] },
+  REAR: { label: "Rear", pos: [-2.5, 0.48, 0.0], target: [-0.2, 0.25, 0.0] },
+  TOP: { label: "Top", pos: [0.01, 3.25, 0.01], target: [0.0, 0.15, 0.0] },
+  SIDE: { label: "Side", pos: [0.0, 0.52, 2.78], target: [0.0, 0.28, 0.0] },
+  FL_CORNER: { label: "FL Corner", pos: [1.55, 0.56, -1.28], target: [0.74, 0.22, -0.52] },
 };
 
 const isSoftwareGl = (() => {
@@ -137,44 +137,75 @@ function CameraRig({
 }
 
 /**
- * Calibrated 0.5 m engineering reference floor grid
+ * Calibrated 0.5 m engineering studio floor + soft ambient contact shadow plane
  */
 function FloorMeasurementGrid() {
   const lines = useMemo(() => {
     const minor: Array<[[number, number, number], [number, number, number]]> = [];
     const major: Array<[[number, number, number], [number, number, number]]> = [];
-    const extent = 4.0;
+    const extent = 4.5;
     for (let v = -extent; v <= extent + 1e-4; v += 0.5) {
       const isMajor = Math.abs(v - Math.round(v)) < 1e-3;
       const target = isMajor ? major : minor;
       target.push([
-        [v, 0.001, -extent],
-        [v, 0.001, extent],
+        [v, 0.002, -extent],
+        [v, 0.002, extent],
       ]);
       target.push([
-        [-extent, 0.001, v],
-        [extent, 0.001, v],
+        [-extent, 0.002, v],
+        [extent, 0.002, v],
       ]);
     }
     return { minor, major };
   }, []);
 
+  // Soft studio contact shadow beneath the chassis (procedural radial gradient texture)
+  const shadowTexture = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      const grad = ctx.createRadialGradient(128, 128, 16, 128, 128, 124);
+      grad.addColorStop(0, "rgba(0, 0, 0, 0.62)");
+      grad.addColorStop(0.55, "rgba(0, 0, 0, 0.28)");
+      grad.addColorStop(1, "rgba(0, 0, 0, 0.0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 256, 256);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  useEffect(() => {
+    return () => shadowTexture.dispose();
+  }, [shadowTexture]);
+
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[12, 12]} />
-        <meshStandardMaterial color="#090B10" roughness={0.95} metalness={0.05} />
+        <planeGeometry args={[16, 16]} />
+        <meshStandardMaterial color="#0A0C12" roughness={0.92} metalness={0.08} />
       </mesh>
+
+      {/* Soft contact shadow plane directly beneath the monocoque */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.05, 0.003, 0]}>
+        <planeGeometry args={[2.9, 1.85]} />
+        <meshBasicMaterial map={shadowTexture} transparent depthWrite={false} />
+      </mesh>
+
       {lines.minor.map((seg, i) => (
-        <Line key={`m-${i}`} points={seg} color="#171B26" lineWidth={0.75} />
+        <Line key={`m-${i}`} points={seg} color="#141824" lineWidth={0.75} />
       ))}
       {lines.major.map((seg, i) => (
-        <Line key={`M-${i}`} points={seg} color="#242A3A" lineWidth={1.1} />
+        <Line key={`M-${i}`} points={seg} color="#202636" lineWidth={1.0} />
       ))}
+
       {/* ISO 8855 Origin Axes (+X forward red, +Y left green -> -Z three, +Z up blue -> +Y three) */}
-      <Line points={[[0, 0.005, 0], [0.45, 0.005, 0]]} color="#DC2626" lineWidth={1.6} />
-      <Line points={[[0, 0.005, 0], [0, 0.005, -0.45]]} color="#10B981" lineWidth={1.6} />
-      <Line points={[[0, 0.005, 0], [0, 0.45, 0]]} color="#38BDF8" lineWidth={1.6} />
+      <Line points={[[0, 0.006, 0], [0.48, 0.006, 0]]} color="#EF4444" lineWidth={1.6} />
+      <Line points={[[0, 0.006, 0], [0, 0.006, -0.48]]} color="#10B981" lineWidth={1.6} />
+      <Line points={[[0, 0.006, 0], [0, 0.48, 0]]} color="#38BDF8" lineWidth={1.6} />
     </group>
   );
 }
@@ -208,7 +239,7 @@ function RodMember({
   return (
     <mesh position={mid} quaternion={quat}>
       <cylinderGeometry args={[radius, radius, len, 8]} />
-      <meshStandardMaterial color={color} metalness={0.78} roughness={0.28} />
+      <meshStandardMaterial color={color} metalness={0.82} roughness={0.24} />
     </mesh>
   );
 }
@@ -247,19 +278,13 @@ function CornerSuspensionLinkage({
 
   return (
     <group>
-      {/* Lower Wishbone */}
-      <RodMember a={lcaF} b={lbj} radius={0.008} color="#9CA3AF" />
-      <RodMember a={lcaR} b={lbj} radius={0.008} color="#9CA3AF" />
-      {/* Upper Wishbone */}
-      <RodMember a={ucaF} b={ubj} radius={0.007} color="#9CA3AF" />
-      <RodMember a={ucaR} b={ubj} radius={0.007} color="#9CA3AF" />
-      {/* Upright Kingpin Spine */}
+      <RodMember a={lcaF} b={lbj} radius={0.008} color="#A6B0C3" />
+      <RodMember a={lcaR} b={lbj} radius={0.008} color="#A6B0C3" />
+      <RodMember a={ucaF} b={ubj} radius={0.007} color="#A6B0C3" />
+      <RodMember a={ucaR} b={ubj} radius={0.007} color="#A6B0C3" />
       <RodMember a={lbj} b={ubj} radius={0.011} color="#C5A059" />
-      {/* Pushrod */}
-      <RodMember a={prW} b={prR} radius={0.006} color="#C5A059" />
-      {/* Tie Rod */}
+      <RodMember a={prW} b={prR} radius={0.006} color="#DFBE78" />
       <RodMember a={tieIn} b={tieOut} radius={0.005} color="#38BDF8" />
-      {/* Damper & ARB */}
       <RodMember a={dampC} b={dampR} radius={0.014} color="#D97706" />
       <RodMember a={arbR} b={arbTip} radius={0.005} color="#64748B" />
       <RodMember a={arbTip} b={arbPiv} radius={0.006} color="#64748B" />
@@ -292,41 +317,36 @@ function CompositeWheelAssembly({
     }
   });
 
-  // Positive camber tilts top outward; invert for left vs right side in Three.js
   const rollCamber = isLeft ? camberRad : -camberRad;
 
   return (
     <group position={position} rotation={[0, steerRad, 0]}>
       <group rotation={[rollCamber, 0, 0]}>
-        {/* Upright & In-Wheel Motor Housing (non-spinning) */}
+        {/* Upright & In-Wheel Motor Housing */}
         <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[radiusM * 0.42, radiusM * 0.42, widthM * 0.55, 16]} />
-          <meshStandardMaterial color="#1E222E" metalness={0.82} roughness={0.26} />
+          <cylinderGeometry args={[radiusM * 0.42, radiusM * 0.42, widthM * 0.55, 18]} />
+          <meshStandardMaterial color="#1E2433" metalness={0.85} roughness={0.24} />
         </mesh>
         {/* Brake Caliper */}
         <mesh position={[-radiusM * 0.36, 0.02, 0]}>
           <boxGeometry args={[0.055, 0.085, 0.06]} />
-          <meshStandardMaterial color="#C5A059" metalness={0.75} roughness={0.3} />
+          <meshStandardMaterial color="#C5A059" metalness={0.78} roughness={0.26} />
         </mesh>
 
         {/* Spinning Tire + Rim + Center-Lock Nut */}
         <group ref={wheelSpinRef}>
-          {/* Hoosier 16.0x7.5-10 Tire Carcass */}
           <mesh rotation={[Math.PI / 2, 0, 0]} castShadow={!isSoftwareGl}>
-            <cylinderGeometry args={[radiusM, radiusM, widthM, 28]} />
-            <meshStandardMaterial color="#14161B" roughness={0.86} metalness={0.06} />
+            <cylinderGeometry args={[radiusM, radiusM, widthM, 30]} />
+            <meshStandardMaterial color="#13161C" roughness={0.86} metalness={0.06} />
           </mesh>
-          {/* Rim Barrel */}
           <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[radiusM * 0.62, radiusM * 0.62, widthM + 0.004, 20]} />
-            <meshStandardMaterial color="#272D3D" metalness={0.85} roughness={0.22} />
+            <cylinderGeometry args={[radiusM * 0.62, radiusM * 0.62, widthM + 0.004, 22]} />
+            <meshStandardMaterial color="#2A3142" metalness={0.86} roughness={0.22} />
           </mesh>
-          {/* Center-Lock Hub */}
           <mesh rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.032, 0.032, widthM + 0.016, 6]} />
-            <meshStandardMaterial color="#C5A059" metalness={0.92} roughness={0.18} />
+            <meshStandardMaterial color="#DFBE78" metalness={0.92} roughness={0.18} />
           </mesh>
-          {/* Visual Rotation Spoke Bars */}
           {[0, Math.PI / 3, (2 * Math.PI) / 3].map((ang, i) => (
             <mesh
               key={i}
@@ -334,7 +354,7 @@ function CompositeWheelAssembly({
               position={[0, 0, isLeft ? -widthM * 0.42 : widthM * 0.42]}
             >
               <boxGeometry args={[radiusM * 1.12, 0.014, 0.012]} />
-              <meshStandardMaterial color="#3A4259" metalness={0.85} roughness={0.25} />
+              <meshStandardMaterial color="#444E66" metalness={0.85} roughness={0.24} />
             </mesh>
           ))}
         </group>
@@ -360,34 +380,31 @@ function ForceVectorsAndRing({
   showVectors: boolean;
   showRings: boolean;
 }) {
-  const forceScale = 0.00032; // 1000 N -> 0.32 m
+  const forceScale = 0.00032;
   const ringRadius = Math.max(0.08, Math.min(0.32, (fzN / 1600) * 0.26));
-  const ringColor = util >= 0.95 ? "#DC2626" : util >= 0.85 ? "#D97706" : "#10B981";
+  const ringColor = util >= 0.9 ? "#EF4444" : util >= 0.7 ? "#C5A059" : "#10B981";
 
   const [cx, , cz] = contactPos;
-  const fxEnd: [number, number, number] = [cx + fxN * forceScale, 0.015, cz];
-  const fyEnd: [number, number, number] = [cx, 0.015, cz - fyN * forceScale];
+  const fxEnd: [number, number, number] = [cx + fxN * forceScale, 0.016, cz];
+  const fyEnd: [number, number, number] = [cx, 0.016, cz - fyN * forceScale];
   const fzEnd: [number, number, number] = [cx, Math.max(0.05, fzN * forceScale), cz];
 
   return (
     <group>
       {showRings ? (
-        <mesh position={[cx, 0.004, cz]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[ringRadius * 0.82, ringRadius, 32]} />
+        <mesh position={[cx, 0.005, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[ringRadius * 0.82, ringRadius, 36]} />
           <meshBasicMaterial color={ringColor} side={THREE.DoubleSide} transparent opacity={0.85} />
         </mesh>
       ) : null}
 
       {showVectors ? (
         <group>
-          {/* Fz vertical load (Gold) */}
-          <Line points={[[cx, 0.005, cz], fzEnd]} color="#C5A059" lineWidth={2.0} />
-          {/* Fy lateral force (Cyan) */}
-          <Line points={[[cx, 0.015, cz], fyEnd]} color="#38BDF8" lineWidth={2.0} />
-          {/* Fx longitudinal force (Green/Red) */}
+          <Line points={[[cx, 0.006, cz], fzEnd]} color="#DFBE78" lineWidth={2.0} />
+          <Line points={[[cx, 0.016, cz], fyEnd]} color="#38BDF8" lineWidth={2.0} />
           <Line
-            points={[[cx, 0.015, cz], fxEnd]}
-            color={fxN >= 0 ? "#10B981" : "#DC2626"}
+            points={[[cx, 0.016, cz], fxEnd]}
+            color={fxN >= 0 ? "#34D399" : "#EF4444"}
             lineWidth={2.0}
           />
         </group>
@@ -419,12 +436,11 @@ function TeR27DigitalTwinScene({
   const halfTrackF = p.track_front_m / 2;
   const halfTrackR = p.track_rear_m / 2;
   const wheelR = p.wheel_radius_m;
-  const wheelW = 0.19; // Hoosier 16.0x7.5-10 ~ 7.5 in = 0.1905 m
+  const wheelW = 0.19;
 
   const hasFrontHp = hasNonZeroHardpoints(overview.suspension.front_left_hardpoints);
   const hasRearHp = hasNonZeroHardpoints(overview.suspension.rear_left_hardpoints);
 
-  // Throttle React prop sync to ~20 fps while keeping smooth 60 fps chassis/wheel spin
   const lastSyncRef = useRef(0);
   useFrame((state, delta) => {
     const f = latestFrameRef.current;
@@ -437,8 +453,8 @@ function TeR27DigitalTwinScene({
           f.wheels.rl.wheel_travel_m +
           f.wheels.rr.wheel_travel_m) /
         4;
-      const rollRad = ((f.state.ay_g * 0.80) * Math.PI) / 180;
-      const pitchRad = ((f.state.ax_g * 0.52) * Math.PI) / 180;
+      const rollRad = (f.state.ay_g * 0.8 * Math.PI) / 180;
+      const pitchRad = (f.state.ax_g * 0.52 * Math.PI) / 180;
       chassisGroupRef.current.position.y = -heaveM;
       chassisGroupRef.current.rotation.x = rollRad;
       chassisGroupRef.current.rotation.z = -pitchRad;
@@ -452,7 +468,6 @@ function TeR27DigitalTwinScene({
 
   const steerRad = (liveSnap.state.steer_deg * Math.PI) / 180;
 
-  // Monocoque structural wireframe edges
   const monocoqueEdges = useMemo<Array<[[number, number, number], [number, number, number]]>>(() => {
     const noseX = xFront + 0.42;
     const bulkFrontX = xFront + 0.04;
@@ -464,11 +479,10 @@ function TeR27DigitalTwinScene({
     const wRear = 0.25;
     const zFloor = 0.055;
     const zTopFront = 0.42;
-    const zTopMid = 0.50;
+    const zTopMid = 0.5;
     const zHoop = 0.94;
 
     return [
-      // Floor perimeter
       [[noseX, zFloor + 0.04, -0.09], [noseX, zFloor + 0.04, 0.09]],
       [[noseX, zFloor + 0.04, -0.09], [bulkFrontX, zFloor, -wFront]],
       [[noseX, zFloor + 0.04, 0.09], [bulkFrontX, zFloor, wFront]],
@@ -477,7 +491,6 @@ function TeR27DigitalTwinScene({
       [[cockpitX, zFloor, -wMid], [tailX, zFloor, -wRear]],
       [[cockpitX, zFloor, wMid], [tailX, zFloor, wRear]],
       [[tailX, zFloor, -wRear], [tailX, zFloor, wRear]],
-      // Upper rails
       [[noseX, zFloor + 0.14, -0.07], [bulkFrontX, zTopFront, -wFront * 0.85]],
       [[noseX, zFloor + 0.14, 0.07], [bulkFrontX, zTopFront, wFront * 0.85]],
       [[bulkFrontX, zTopFront, -wFront * 0.85], [cockpitX, zTopMid, -wMid * 0.9]],
@@ -486,7 +499,6 @@ function TeR27DigitalTwinScene({
       [[cockpitX, zTopMid, wMid * 0.9], [hoopX, zTopMid + 0.04, wRear]],
       [[hoopX, zTopMid + 0.04, -wRear], [tailX, zTopFront - 0.06, -wRear * 0.85]],
       [[hoopX, zTopMid + 0.04, wRear], [tailX, zTopFront - 0.06, wRear * 0.85]],
-      // Bulkhead verticals & Main Roll Hoop
       [[bulkFrontX, zFloor, -wFront], [bulkFrontX, zTopFront, -wFront * 0.85]],
       [[bulkFrontX, zFloor, wFront], [bulkFrontX, zTopFront, wFront * 0.85]],
       [[bulkFrontX, zTopFront, -wFront * 0.85], [bulkFrontX, zTopFront, wFront * 0.85]],
@@ -535,76 +547,69 @@ function TeR27DigitalTwinScene({
     },
   ];
 
-  // Dynamic Roll Axis construction (using CG & confirmed anti-dive/anti-squat angles)
   const frontRcY = 0.048 + liveSnap.state.ay_g * 0.008;
   const rearRcY = 0.068 + liveSnap.state.ay_g * 0.011;
 
   return (
     <>
-      <color attach="background" args={["#08090C"]} />
-      <fog attach="fog" args={["#08090C", 7.5, 16]} />
+      <color attach="background" args={["#0A0C12"]} />
+      <fog attach="fog" args={["#0A0C12", 7.8, 16.5]} />
       <StudioEnvironment />
 
-      {/* 3-Point Technical Lighting Rig */}
-      <hemisphereLight args={["#94A3B8", "#0F1116", 0.55]} />
+      {/* Calibrated 3-Point Studio Lighting */}
+      <hemisphereLight args={["#CBD5E1", "#0D1018", 0.55]} />
       <directionalLight
-        position={[4, 6, 4]}
-        intensity={1.65}
-        color="#FFF6E8"
+        position={[4.2, 6.2, 4.0]}
+        intensity={1.75}
+        color="#FFF5E6"
         castShadow={!isSoftwareGl}
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
         shadow-bias={-0.0005}
       />
-      <directionalLight position={[-4, 3, -3]} intensity={0.75} color="#BAE6FD" />
+      <directionalLight position={[-4.5, 3.2, -3.5]} intensity={0.85} color="#BAE6FD" />
 
       <FloorMeasurementGrid />
       <CameraRig preset={preset} presetTrigger={presetTrigger} />
 
-      {/* Sprung Mass Monocoque Assembly */}
       <group ref={chassisGroupRef}>
-        {/* Carbon Monocoque Structural Tub (semi-matte composite) */}
         <mesh position={[0.06, 0.25, 0]} castShadow={!isSoftwareGl}>
           <boxGeometry args={[p.wheelbase_m * 0.88, 0.28, 0.44]} />
           <meshStandardMaterial
-            color="#151820"
-            metalness={0.25}
-            roughness={0.62}
+            color="#181D27"
+            metalness={0.32}
+            roughness={0.56}
             transparent
-            opacity={layers.wireframeChassis ? 0.52 : 0.92}
+            opacity={layers.wireframeChassis ? 0.56 : 0.94}
           />
         </mesh>
 
-        {/* Nose Cone Taper */}
         <mesh position={[xFront + 0.18, 0.19, 0]} rotation={[0, 0, -Math.PI / 2]}>
           <coneGeometry args={[0.16, 0.56, 4]} />
-          <meshStandardMaterial color="#1B1F2A" metalness={0.35} roughness={0.5} />
+          <meshStandardMaterial color="#1E2432" metalness={0.38} roughness={0.46} />
         </mesh>
 
-        {/* Front & Rear Aero Reference Wings */}
         <mesh position={[xFront + 0.44, 0.09, 0]}>
           <boxGeometry args={[0.24, 0.02, p.track_front_m * 1.04]} />
-          <meshStandardMaterial color="#1E2330" metalness={0.4} roughness={0.48} />
+          <meshStandardMaterial color="#232A3B" metalness={0.44} roughness={0.42} />
         </mesh>
         <mesh position={[xRear - 0.16, 0.86, 0]}>
           <boxGeometry args={[0.28, 0.025, p.track_rear_m * 0.86]} />
-          <meshStandardMaterial color="#1E2330" metalness={0.4} roughness={0.48} />
+          <meshStandardMaterial color="#232A3B" metalness={0.44} roughness={0.42} />
         </mesh>
 
-        {/* CG Reference Marker */}
+        {/* CG Reference Sphere */}
         <mesh position={[0, p.cg_height_m, 0]}>
-          <sphereGeometry args={[0.028, 16, 16]} />
-          <meshStandardMaterial color="#C5A059" metalness={0.9} roughness={0.18} />
+          <sphereGeometry args={[0.028, 18, 18]} />
+          <meshStandardMaterial color="#DFBE78" metalness={0.9} roughness={0.16} />
         </mesh>
 
-        {/* CAD Structural Wireframe */}
         {layers.wireframeChassis
           ? monocoqueEdges.map((seg, idx) => (
-              <Line key={idx} points={seg} color="#4A556E" lineWidth={1.1} />
+              <Line key={idx} points={seg} color="#52607D" lineWidth={1.1} />
             ))
           : null}
 
-        {/* Exact Confirmed Double-Wishbone Linkages (only rendered when confirmed hardpoints are present) */}
         {hasFrontHp ? (
           <>
             <CornerSuspensionLinkage
@@ -636,7 +641,6 @@ function TeR27DigitalTwinScene({
         ) : null}
       </group>
 
-      {/* 4 Articulated Wheels & Contact Patch Physics Layers */}
       {corners.map((c) => {
         const wState = liveSnap.wheels[c.key];
         return (
@@ -663,7 +667,6 @@ function TeR27DigitalTwinScene({
         );
       })}
 
-      {/* Roll Axis & IC Construction Lines */}
       {layers.rollCenterLines ? (
         <group>
           <Line
@@ -671,58 +674,55 @@ function TeR27DigitalTwinScene({
               [xFront, frontRcY, 0],
               [xRear, rearRcY, 0],
             ]}
-            color="#C5A059"
+            color="#DFBE78"
             lineWidth={2.0}
           />
           <Line
             points={[
-              [xFront, 0.005, -halfTrackF],
+              [xFront, 0.006, -halfTrackF],
               [xFront, frontRcY, 0],
-              [xFront, 0.005, halfTrackF],
+              [xFront, 0.006, halfTrackF],
             ]}
             color="#38BDF8"
-            lineWidth={1.1}
+            lineWidth={1.15}
           />
           <Line
             points={[
-              [xRear, 0.005, -halfTrackR],
+              [xRear, 0.006, -halfTrackR],
               [xRear, rearRcY, 0],
-              [xRear, 0.005, halfTrackR],
+              [xRear, 0.006, halfTrackR],
             ]}
             color="#38BDF8"
-            lineWidth={1.1}
+            lineWidth={1.15}
           />
         </group>
       ) : null}
 
-      {/* Anti-Dive (56.9%) & Anti-Squat (41.2%) Side-View Geometry Planes */}
       {layers.antiGeometryPlanes ? (
         <group>
-          {/* Front Anti-Dive Line from front contact patch toward CG plane */}
           <Line
             points={[
-              [xFront, 0.005, -halfTrackF],
+              [xFront, 0.006, -halfTrackF],
               [
                 xFront - p.wheelbase_m * 0.6,
                 p.cg_height_m * overview.suspension.anti_dive_front * 1.15,
                 -halfTrackF,
               ],
             ]}
-            color="#D97706"
-            lineWidth={1.4}
+            color="#F59E0B"
+            lineWidth={1.5}
           />
-          {/* Rear Anti-Squat Line from rear contact patch toward CG plane */}
           <Line
             points={[
-              [xRear, 0.005, -halfTrackR],
+              [xRear, 0.006, -halfTrackR],
               [
                 xRear + p.wheelbase_m * 0.6,
                 p.cg_height_m * overview.suspension.anti_squat_rear * 1.15,
                 -halfTrackR,
               ],
             ]}
-            color="#10B981"
-            lineWidth={1.4}
+            color="#34D399"
+            lineWidth={1.5}
           />
         </group>
       ) : null}
@@ -731,12 +731,7 @@ function TeR27DigitalTwinScene({
 }
 
 export function Vehicle3DViewport() {
-  const {
-    vehicleOverview,
-    frame,
-    latestFrameRef,
-    importConfirmedHardpoints,
-  } = useTelemetryStore();
+  const { vehicleOverview, frame, latestFrameRef, importConfirmedHardpoints } = useTelemetryStore();
 
   const [preset, setPreset] = useState<CameraPresetId>("ISO");
   const [presetTrigger, setPresetTrigger] = useState<number>(0);
@@ -763,51 +758,50 @@ export function Vehicle3DViewport() {
 
   if (!vehicleOverview) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-[#08090C] font-mono text-[11px] text-[#7E8799]">
-        Loading TeR27 4WD overview parameters...
+      <div className="machined-panel w-full h-full flex items-center justify-center text-[12px] text-[#94A3B8]">
+        Loading TeR27 4WD vehicle envelope parameters...
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full min-h-0 overflow-hidden bg-[#08090C]">
+    <div className="w-full h-full min-h-0 overflow-hidden">
       <SplitPane
         direction="horizontal"
-        initialRatio={0.72}
+        initialRatio={0.71}
         minRatio={0.5}
         maxRatio={0.82}
         first={
-          <div className="w-full h-full min-h-0 flex flex-col bg-[#08090C] relative">
-            {/* Viewport Top Bar: Camera Presets & Confirmed Envelope Readout */}
-            <div className="panel-header-bar gap-2 z-10">
-              <div className="flex items-center gap-2">
-                <span className="panel-title-label">3D Spatial Digital Twin // TeR27 4WD</span>
-                <span className="text-[10px] font-mono text-[#7E8799]">
-                  WB {vehicleOverview.params.wheelbase_m.toFixed(2)}m / TRK{" "}
-                  {vehicleOverview.params.track_front_m.toFixed(2)}m / CG{" "}
-                  {(vehicleOverview.params.cg_height_m * 1000).toFixed(0)}mm
+          <div className="machined-panel w-full h-full min-h-0 flex flex-col overflow-hidden relative">
+            {/* Minimal Studio Header Bar */}
+            <div className="panel-header-bar gap-3 z-10">
+              <div className="flex items-center gap-2.5">
+                <span className="panel-title-label">3D Spatial Digital Twin</span>
+                <span className="status-pill status-pill-muted font-mono text-[10px]">
+                  WB {vehicleOverview.params.wheelbase_m.toFixed(2)} m · Track{" "}
+                  {vehicleOverview.params.track_front_m.toFixed(2)} m · CG{" "}
+                  {(vehicleOverview.params.cg_height_m * 1000).toFixed(0)} mm
                 </span>
               </div>
 
-              <div className="flex items-center gap-1">
-                {(Object.keys(CAMERA_PRESETS) as CameraPresetId[]).map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => handleSelectPreset(id)}
-                    className={`px-2 py-0.5 text-[10px] font-mono border rounded-[2px] cursor-pointer ${
-                      preset === id
-                        ? "border-[#C5A059] text-[#C5A059] bg-[#1B1F2A]"
-                        : "border-[#222633] text-[#7E8799] bg-[#08090C] hover:text-[#ECEFF4]"
-                    }`}
-                  >
-                    {id.replace("_", " ")}
-                  </button>
-                ))}
+              {/* Compact live telemetry readout pill */}
+              <div className="flex items-center gap-3 font-mono text-[11px] tabular text-[#CBD5E1]">
+                <span>
+                  <span className="text-[#64748B]">Steer </span>
+                  {frame.state.steer_deg.toFixed(1)}°
+                </span>
+                <span>
+                  <span className="text-[#64748B]">Speed </span>
+                  {(frame.state.vx * 3.6).toFixed(1)} km/h
+                </span>
+                <span className="text-[#DFBE78]">
+                  <span className="text-[#64748B]">ay </span>
+                  {frame.state.ay_g.toFixed(2)} g
+                </span>
               </div>
             </div>
 
-            {/* R3F WebGL Canvas Stage */}
+            {/* Unobstructed R3F WebGL Canvas Stage */}
             <div className="flex-1 min-h-0 w-full relative">
               <Canvas
                 shadows={!isSoftwareGl}
@@ -829,24 +823,58 @@ export function Vehicle3DViewport() {
                 />
               </Canvas>
 
-              {/* Compact Bottom Legend Strip (solid surface, zero backdrop-blur over WebGL) */}
-              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between px-2.5 py-1 bg-[#0F1116] border border-[#222633] rounded-[2px] font-mono text-[10px] text-[#7E8799] pointer-events-none">
-                <div className="flex items-center gap-3">
-                  <span>
-                    STEER <strong className="text-[#ECEFF4]">{frame.state.steer_deg.toFixed(1)} deg</strong>
-                  </span>
-                  <span>
-                    vx <strong className="text-[#ECEFF4]">{(frame.state.vx * 3.6).toFixed(1)} km/h</strong>
-                  </span>
-                  <span>
-                    ay <strong className="text-[#C5A059]">{frame.state.ay_g.toFixed(2)} g</strong>
-                  </span>
+              {/* Floating Bottom Control Dock (solid dark surface, zero backdrop-blur over WebGL) */}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[96%] flex items-center gap-2.5 px-2.5 py-1.5 rounded-[8px] bg-[#11141B] border border-white/[0.1] shadow-[0_12px_30px_rgba(0,0,0,0.6)] flex-wrap justify-center">
+                {/* Camera Presets */}
+                <div className="seg-track" role="group" aria-label="Camera Presets">
+                  {(Object.keys(CAMERA_PRESETS) as CameraPresetId[]).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      data-active={preset === id ? "true" : "false"}
+                      onClick={() => handleSelectPreset(id)}
+                      className="seg-btn"
+                    >
+                      {CAMERA_PRESETS[id].label}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[#C5A059]">Fz</span>
+
+                <div className="w-[1px] h-4 bg-white/[0.08]" />
+
+                {/* Quick Physics Layer Pills */}
+                <div className="flex items-center gap-1">
+                  {(
+                    [
+                      { key: "forceVectors", label: "Forces" },
+                      { key: "frictionRings", label: "Rings" },
+                      { key: "rollCenterLines", label: "Roll Axis" },
+                      { key: "antiGeometryPlanes", label: "Anti-Geom" },
+                      { key: "wireframeChassis", label: "Wireframe" },
+                    ] as const
+                  ).map((item) => {
+                    const active = layers[item.key];
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => toggleLayer(item.key)}
+                        className={`px-2 py-1 rounded-[4px] text-[10.5px] font-medium border cursor-pointer transition-colors ${
+                          active
+                            ? "bg-[#C5A059]/14 border-[#C5A059]/35 text-[#DFBE78]"
+                            : "bg-[#0B0D12] border-white/[0.06] text-[#94A3B8] hover:text-[#F1F5F9]"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-white/[0.08] font-mono text-[10px]">
+                  <span className="text-[#DFBE78]">Fz</span>
                   <span className="text-[#38BDF8]">Fy</span>
-                  <span className="text-[#10B981]">+Fx</span>
-                  <span>0.5 m Grid / Orbit Drag + Scroll Zoom</span>
+                  <span className="text-[#34D399]">+Fx</span>
                 </div>
               </div>
             </div>

@@ -88,76 +88,78 @@ export function SimulationLauncher() {
   };
 
   return (
-    <div className="flex flex-col w-full h-full min-h-0 bg-[#0F1116] overflow-y-auto">
+    <div className="machined-panel flex flex-col w-full h-full min-h-0 overflow-hidden">
       <div className="panel-header-bar">
-        <span className="panel-title-label">Asynchronous CasADi LTS Launcher</span>
-        <span className="text-[10px] font-mono text-[#7E8799]">POST /api/simulation/run</span>
+        <span className="panel-title-label">CasADi Optimal Control Launcher</span>
+        <span className="status-pill status-pill-muted font-mono text-[10px]">
+          IPOPT Solver
+        </span>
       </div>
 
-      <div className="p-2.5 space-y-2.5 text-[11px]">
-        <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
-          <label className="space-y-0.5">
-            <span className="text-[#7E8799] block">EVENT</span>
+      <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 text-[11.5px]">
+        <div className="grid grid-cols-2 gap-2.5">
+          <label className="space-y-1">
+            <span className="text-[10.5px] font-medium text-[#94A3B8] block">Event</span>
             <select
               value={event}
               onChange={(e) => setEvent(e.target.value as SimulationEventName)}
-              className="w-full bg-[#08090C] border border-[#222633] text-[#ECEFF4] px-2 py-1 rounded-[2px]"
+              className="w-full h-[30px] bg-[#0B0D12] border border-white/[0.08] text-[#F1F5F9] px-2.5 rounded-[5px] text-[11.5px] outline-none focus:border-[#C5A059]/60"
             >
-              <option value="skidpad">skidpad</option>
-              <option value="accel">accel (75 m)</option>
-              <option value="autocross">autocross</option>
-              <option value="endurance">endurance (22 km)</option>
+              <option value="skidpad" className="bg-[#11141B]">Skidpad</option>
+              <option value="accel" className="bg-[#11141B]">Acceleration (75 m)</option>
+              <option value="autocross" className="bg-[#11141B]">Autocross</option>
+              <option value="endurance" className="bg-[#11141B]">Endurance (22 km)</option>
             </select>
           </label>
 
-          <label className="space-y-0.5">
-            <span className="text-[#7E8799] block">GRIP PROFILE</span>
+          <label className="space-y-1">
+            <span className="text-[10.5px] font-medium text-[#94A3B8] block">Grip Profile</span>
             <select
               value={gripProfile}
               onChange={(e) => setGripProfile(e.target.value as GripProfileName)}
-              className="w-full bg-[#08090C] border border-[#222633] text-[#ECEFF4] px-2 py-1 rounded-[2px]"
+              className="w-full h-[30px] bg-[#0B0D12] border border-white/[0.08] text-[#F1F5F9] px-2.5 rounded-[5px] text-[11.5px] outline-none focus:border-[#C5A059]/60"
             >
-              <option value="FSG_RUBBERED">FSG_RUBBERED (0.57)</option>
-              <option value="COLD_TEST_OCT">COLD_TEST_OCT (0.47)</option>
+              <option value="FSG_RUBBERED" className="bg-[#11141B]">FSG Rubbered (0.57)</option>
+              <option value="COLD_TEST_OCT" className="bg-[#11141B]">Cold Oct (0.47)</option>
             </select>
           </label>
 
-          <label className="space-y-0.5">
-            <span className="text-[#7E8799] block">COMPOUND</span>
+          <label className="space-y-1">
+            <span className="text-[10.5px] font-medium text-[#94A3B8] block">Tire Compound</span>
             <select
               value={compound}
               onChange={(e) => setCompound(e.target.value as TireCompoundName)}
-              className="w-full bg-[#08090C] border border-[#222633] text-[#ECEFF4] px-2 py-1 rounded-[2px]"
+              className="w-full h-[30px] bg-[#0B0D12] border border-white/[0.08] text-[#F1F5F9] px-2.5 rounded-[5px] text-[11.5px] outline-none focus:border-[#C5A059]/60"
             >
-              <option value="R25B">Hoosier R25B</option>
-              <option value="R20">Hoosier R20</option>
+              <option value="R25B" className="bg-[#11141B]">Hoosier R25B</option>
+              <option value="R20" className="bg-[#11141B]">Hoosier R20</option>
             </select>
           </label>
 
-          <label className="space-y-0.5">
-            <span className="text-[#7E8799] block">DRIVER ENVELOPE</span>
+          <label className="space-y-1">
+            <span className="text-[10.5px] font-medium text-[#94A3B8] block">Driver Envelope</span>
             <select
               value={mode}
               onChange={(e) => setMode(e.target.value as SimulationModeName)}
-              className="w-full bg-[#08090C] border border-[#222633] text-[#ECEFF4] px-2 py-1 rounded-[2px]"
+              className="w-full h-[30px] bg-[#0B0D12] border border-white/[0.08] text-[#F1F5F9] px-2.5 rounded-[5px] text-[11.5px] outline-none focus:border-[#C5A059]/60"
             >
-              <option value="human_achievable">human_achievable</option>
-              <option value="theoretical_optimal">theoretical_optimal</option>
+              <option value="human_achievable" className="bg-[#11141B]">Human Achievable</option>
+              <option value="theoretical_optimal" className="bg-[#11141B]">Theoretical Optimal</option>
             </select>
           </label>
         </div>
 
-        <div className="flex items-center justify-between gap-2 font-mono text-[10px]">
-          <label className="flex items-center gap-1.5 cursor-pointer text-[#ECEFF4]">
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <label className="flex items-center gap-2 cursor-pointer text-[#E2E8F0]">
             <input
               type="checkbox"
               checked={optimizeSetup}
               onChange={(e) => setOptimizeSetup(e.target.checked)}
               className="accent-[#C5A059]"
             />
-            Co-Optimize Trackside Setup (7-DOF)
+            Co-Optimize Setup (7-DOF)
           </label>
-          <label className="flex items-center gap-1.5 cursor-pointer text-[#7E8799]">
+          <label className="flex items-center gap-2 cursor-pointer text-[#94A3B8]">
             <input
               type="checkbox"
               checked={dryRun}
@@ -172,36 +174,38 @@ export function SimulationLauncher() {
           type="button"
           disabled={launching}
           onClick={() => void handleLaunch()}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[#C5A059] hover:bg-[#D4B06A] text-[#08090C] font-mono text-[11px] font-semibold rounded-[2px] cursor-pointer disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 h-[34px] bg-[#C5A059] hover:bg-[#DFBE78] text-[#07080B] text-[11.5px] font-semibold rounded-[5px] cursor-pointer disabled:opacity-50 transition-colors shadow-[0_2px_10px_rgba(197,160,89,0.2)]"
         >
-          <Play className="w-3 h-3" />
-          {launching ? "Submitting Job..." : "Launch CasADi Optimal Control Job"}
+          <Play className="w-3.5 h-3.5 fill-current" />
+          {launching ? "Submitting Optimization Job..." : "Run CasADi Optimal Control"}
         </button>
 
-        {/* Active Job Progress & Log Tail */}
+        {/* Active Job Progress & Console Tail */}
         {activeJob ? (
-          <div className="bg-[#08090C] border border-[#222633] p-2 space-y-1.5 font-mono text-[10px]">
-            <div className="flex items-center justify-between">
-              <span className="text-[#ECEFF4] font-semibold">{activeJob.job_id}</span>
+          <div className="machined-well p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[11px] font-semibold text-[#F1F5F9]">
+                {activeJob.job_id}
+              </span>
               <span
-                className={
+                className={`status-pill font-mono text-[10px] ${
                   activeJob.status === "completed"
-                    ? "text-[#10B981]"
+                    ? "status-pill-nominal"
                     : activeJob.status === "failed"
-                      ? "text-[#DC2626]"
-                      : "text-[#C5A059]"
-                }
+                      ? "status-pill-limit"
+                      : "status-pill-gold"
+                }`}
               >
-                {activeJob.status.toUpperCase()} ({activeJob.progress_pct}%)
+                {activeJob.status} · {activeJob.progress_pct}%
               </span>
             </div>
-            <div className="w-full h-1 bg-[#151820]">
+            <div className="w-full h-1.5 rounded-full bg-[#161A23] overflow-hidden">
               <div
-                className="h-full bg-[#C5A059]"
+                className="h-full rounded-full bg-[#C5A059] transition-all duration-300"
                 style={{ width: `${activeJob.progress_pct}%` }}
               />
             </div>
-            <div className="max-h-[72px] overflow-y-auto text-[9px] text-[#7E8799] space-y-0.5">
+            <div className="max-h-[76px] overflow-y-auto font-mono text-[10px] text-[#94A3B8] space-y-0.5 leading-relaxed">
               {activeJob.log_tail.map((line, i) => (
                 <div key={i} className="truncate">
                   {line}
@@ -211,11 +215,11 @@ export function SimulationLauncher() {
           </div>
         ) : null}
 
-        {/* Persistent Run History Table */}
-        <div className="pt-1 border-t border-[#222633]">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#7E8799]">
-              Run History ({history.length})
+        {/* Persistent Run History */}
+        <div className="pt-2 border-t border-white/[0.06] space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-[#CBD5E1]">
+              Recent Runs ({history.length})
             </span>
             {history.length > 0 ? (
               <button
@@ -224,29 +228,29 @@ export function SimulationLauncher() {
                   setHistory([]);
                   saveHistory([]);
                 }}
-                className="text-[9px] font-mono text-[#7E8799] hover:text-[#DC2626] flex items-center gap-0.5 cursor-pointer"
+                className="text-[10.5px] text-[#94A3B8] hover:text-[#F87171] flex items-center gap-1 cursor-pointer"
               >
-                <Trash2 className="w-2.5 h-2.5" />
+                <Trash2 className="w-3 h-3" />
                 Clear
               </button>
             ) : null}
           </div>
 
-          <div className="max-h-[135px] overflow-y-auto border border-[#222633]">
-            <table className="w-full border-collapse font-mono text-[10px]">
-              <thead className="bg-[#151820] text-[#7E8799] sticky top-0">
+          <div className="machined-well max-h-[145px] overflow-y-auto">
+            <table className="w-full border-collapse text-[11px]">
+              <thead className="bg-[#141822] text-[#94A3B8] sticky top-0 border-b border-white/[0.06]">
                 <tr>
-                  <th className="text-left px-1.5 py-1">EVENT</th>
-                  <th className="text-left px-1.5 py-1">COMP</th>
-                  <th className="text-right px-1.5 py-1">OPT TIME</th>
-                  <th className="text-right px-1.5 py-1">STATUS</th>
+                  <th className="text-left px-2.5 py-1.5 font-medium">Event</th>
+                  <th className="text-left px-2.5 py-1.5 font-medium">Compound</th>
+                  <th className="text-right px-2.5 py-1.5 font-medium">Optimal</th>
+                  <th className="text-right px-2.5 py-1.5 font-medium">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#222633]">
+              <tbody className="divide-y divide-white/[0.045]">
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-2 py-2 text-center text-[#7E8799]">
-                      No jobs executed yet.
+                    <td colSpan={4} className="px-3 py-3 text-center text-[#64748B]">
+                      No optimization jobs executed yet.
                     </td>
                   </tr>
                 ) : (
@@ -256,16 +260,24 @@ export function SimulationLauncher() {
                         ? `${job.result.optimal_time_s.toFixed(3)} s`
                         : "—";
                     return (
-                      <tr key={job.job_id} className="hover:bg-[#1B1F2A]">
-                        <td className="px-1.5 py-1 text-[#ECEFF4]">{job.event}</td>
-                        <td className="px-1.5 py-1 text-[#7E8799]">{job.compound}</td>
-                        <td className="px-1.5 py-1 text-right text-[#C5A059]">{optT}</td>
-                        <td
-                          className={`px-1.5 py-1 text-right ${
-                            job.status === "completed" ? "text-[#10B981]" : "text-[#DC2626]"
-                          }`}
-                        >
-                          {job.status.toUpperCase()}
+                      <tr key={job.job_id} className="hover:bg-[#1A202C] transition-colors">
+                        <td className="px-2.5 py-1.5 text-[#F1F5F9] capitalize">{job.event}</td>
+                        <td className="px-2.5 py-1.5 font-mono text-[10.5px] text-[#94A3B8]">
+                          {job.compound}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right font-mono text-[10.5px] text-[#DFBE78] tabular">
+                          {optT}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right">
+                          <span
+                            className={`status-pill text-[9.5px] ${
+                              job.status === "completed"
+                                ? "status-pill-nominal"
+                                : "status-pill-limit"
+                            }`}
+                          >
+                            {job.status}
+                          </span>
                         </td>
                       </tr>
                     );
